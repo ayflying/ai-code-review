@@ -37,6 +37,13 @@ def main() -> int:
     try:
         load_settings()
         batches, notes, after = collect_batches()
+        # 由已解析的Git提交获取说明，不信任事件中的可执行内容，也不依赖通知步骤的cwd。
+        try:
+            subject = subprocess.run(["git", "show", "-s", "--format=%s", after],
+                                     check=True, capture_output=True, timeout=10).stdout.decode("utf-8", "replace")
+            os.environ["AI_REVIEW_COMMIT_SUBJECT"] = subject.strip()
+        except (OSError, subprocess.SubprocessError):
+            subject = ""
         if batches:
             report, attempts, has_risk, should_notify = review_batches(batches, after)
             notes.extend(attempts)
@@ -57,6 +64,8 @@ def main() -> int:
         def clean(value: str) -> str:
             return "\n".join(line.removeprefix("报告 | ") for line in sanitize(value).splitlines())
         write_report(directory, clean(report), [clean(note) for note in notes])
+        (directory / "ai-code-review-subject.txt").write_text(
+            clean(os.getenv("AI_REVIEW_COMMIT_SUBJECT", "")), encoding="utf-8")
     except OSError:
         print("报告文件写入失败，请以上方日志为准。")
     # 独立输出供工作流最后的策略步骤判断，AI/通知失败仍不标记风险。
@@ -79,6 +88,9 @@ if __name__ == "__main__":
         directory = Path(os.getenv("RUNNER_TEMP") or tempfile.gettempdir())
         try:
             report = (directory / "ai-code-review-report.md").read_text(encoding="utf-8")
+            subject_path = directory / "ai-code-review-subject.txt"
+            if subject_path.exists():
+                os.environ["AI_REVIEW_COMMIT_SUBJECT"] = subject_path.read_text(encoding="utf-8")
             print(notify_risk(report, os.getenv("AI_REVIEW_SHOULD_NOTIFY") == "true"))
         except OSError:
             print("报告读取失败，未发送通知。")

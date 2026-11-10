@@ -34,17 +34,19 @@ class NotifyTests(unittest.TestCase):
     def test_risk_sends_keyword_and_context(self):
         with patch.dict(os.environ, {"AI_REVIEW_DINGTALK_WEBHOOK": WEBHOOK,
                                     "AI_REVIEW_REPOSITORY": "owner/repo",
-                                    "AI_REVIEW_AFTER": "abc", "AI_REVIEW_RUN_URL": "https://git.example/run/1"}), \
+                                    "AI_REVIEW_AFTER": "abc", "AI_REVIEW_COMMIT_SUBJECT": "修复素材列表筛选",
+                                     "AI_REVIEW_RUN_URL": "https://git.example/run/1"}), \
                 patch.object(notify, "request_json", return_value={"errcode": 0}) as request:
             self.assertIn("已接受", notify.notify_risk("风险" * 12000, True))
             payload = request.call_args.args[2]
             text = payload["markdown"]["text"]
             self.assertIn("gitea", text)
             self.assertIn("owner/repo", text)
+            self.assertIn("本次提交：修复素材列表筛选", text)
             self.assertIn("https://git.example/run/1", text)
             self.assertNotIn("截断", text)
             self.assertNotIn("风险" * 20, text)
-            self.assertIn("下载详细报告", text)
+            self.assertIn("查看问题详细报告", text)
             self.assertLess(len(text.encode()), 2000)
 
     def test_concise_summary_counts_and_skips_coverage_logs(self):
@@ -53,7 +55,8 @@ class NotifyTests(unittest.TestCase):
         text = summarize(report)
         self.assertIn("明确问题 1 项", text)
         self.assertIn("改进建议 0 项", text)
-        self.assertIn("src/example.py:12：越权", text)
+        self.assertIn("- 越权", text)
+        self.assertNotIn("src/example.py", text)
         self.assertNotIn("缺少README", text)
         self.assertNotIn("触发条件", text)
 

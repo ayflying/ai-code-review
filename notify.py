@@ -27,12 +27,15 @@ def notify_risk(report: str, should_notify: bool) -> str:
         if not keyword or len(keyword.encode("utf-8")) > 200 or any(ord(c) < 32 for c in keyword):
             return "钉钉关键词无效，未发送通知。"
         title = f"{keyword} 代码审查报告"
-        text = (f"## {title}\n\n{short_text(repository, 100)} · {short_text(sha, 8)}\n\n"
-                + summarize(report))
+        subject = short_text(os.getenv("AI_REVIEW_COMMIT_SUBJECT", ""), 100)
+        text = f"## {title}\n\n{short_text(repository, 100)} · {short_text(sha, 8)}\n\n"
+        if subject:
+            text += f"本次提交：{subject}\n\n"
+        text += summarize(report)
         if run_url:
             parsed_run = urlsplit(run_url)
             if parsed_run.scheme == "https" and parsed_run.netloc and not parsed_run.username:
-                text += f"\n\n[下载详细报告（HTML / Markdown）]({run_url.replace(')', '%29')})"
+                text += f"\n\n[查看问题详细报告]({run_url.replace(')', '%29')})"
         else:
             text += "\n\n详情请查看本次 CI 的审查日志。"
         response = request_json(webhook, {}, {

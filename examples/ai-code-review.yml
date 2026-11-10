@@ -113,7 +113,7 @@ jobs:
           AI_REVIEW_AFTER: ${{ gitea.sha }}
           AI_REVIEW_SHOULD_NOTIFY: ${{ steps.review.outputs.should_notify }}
           AI_REVIEW_RUN_URL: ${{ gitea.server_url }}/${{ gitea.repository }}/actions/runs/${{ gitea.run_id }}/artifacts/ai-code-review-report-${{ gitea.run_attempt }}?attempt=${{ gitea.run_attempt }}
-        run: python3 -I "$AI_REVIEW_TOOL_DIR/run.py" --notify
+        run: python3 -I "$AI_REVIEW_TOOL_DIR/artifact_link.py"
 
       # 不使用 job 级 continue-on-error，否则启用阻断也会被吞掉。
       - name: 应用风险阻断策略
