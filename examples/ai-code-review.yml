@@ -3,10 +3,12 @@ name: AI Code Review
 # ===== 各业务仓库只需修改这里 =====
 env:
   AI_REVIEW_BLOCK_ON_RISK: 'false'  # true：发现明确风险时任务失败；false：只报告
-  AI_REVIEW_DINGTALK_WEBHOOK: ${{ secrets.AI_REVIEW_DINGTALK_WEBHOOK }}  # 含令牌，禁止明文提交
-  AI_REVIEW_DINGTALK_KEYWORD: 'gitea'  # 与机器人安全关键词保持一致
-  AI_REVIEW_TOOL_REF: 'v1.1.0'
-  AI_REVIEW_TOOL_SHA: '84d21423b4f28f882addbd533f67f36489a5c38b'
+  # 不指定其他机器人时保留下面的默认 Secret 引用，使用环境已配置的机器人。
+  # 更换机器人只改 Secret 名称，禁止填写真实地址；清空值或 Secret 未配置则不通知。
+  AI_REVIEW_DINGTALK_WEBHOOK: ${{ secrets.AI_REVIEW_DINGTALK_WEBHOOK }}
+  AI_REVIEW_DINGTALK_KEYWORD: 'gitea'  # 与所选机器人的安全关键词保持一致
+  AI_REVIEW_TOOL_REF: 'v1.1.0'  # 固定审查器版本；升级时与下面的 SHA 一起修改
+  AI_REVIEW_TOOL_SHA: '84d21423b4f28f882addbd533f67f36489a5c38b'  # 对应版本的完整提交 SHA，用于校验
 # =================================
 
 on:

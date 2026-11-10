@@ -36,15 +36,17 @@
 
 ```yaml
 env:
-  AI_REVIEW_BLOCK_ON_RISK: 'false'
+  AI_REVIEW_BLOCK_ON_RISK: 'false'  # true：发现风险时任务失败；false：只报告
+  # 不指定其他机器人时保留默认 Secret 引用，使用环境已配置的机器人。
+  # 更换机器人只改 Secret 名称；禁止填写真实地址，清空值则不通知。
   AI_REVIEW_DINGTALK_WEBHOOK: ${{ secrets.AI_REVIEW_DINGTALK_WEBHOOK }}
-  AI_REVIEW_DINGTALK_KEYWORD: 'gitea'
-  AI_REVIEW_TOOL_REF: 'v1.1.0'
-  AI_REVIEW_TOOL_SHA: '84d21423b4f28f882addbd533f67f36489a5c38b'
+  AI_REVIEW_DINGTALK_KEYWORD: 'gitea'  # 与所选机器人的安全关键词一致
+  AI_REVIEW_TOOL_REF: 'v1.1.0'  # 固定工具版本，升级时与 SHA 配套修改
+  AI_REVIEW_TOOL_SHA: '84d21423b4f28f882addbd533f67f36489a5c38b'  # 版本对应的完整提交 SHA
 ```
 
 - **只报告**：保持 `AI_REVIEW_BLOCK_ON_RISK: 'false'`。改成 `'true'` 后，发现任何明确风险都会让任务失败；审查或通知失败不按代码风险阻断。
-- **钉钉通知**：机器人安全关键词需与 `AI_REVIEW_DINGTALK_KEYWORD` 一致，默认 `gitea`。当前不支持加签机器人。
+- **钉钉通知**：不填写其他机器人配置时，保留默认 Secret 引用即可使用环境中已配置的 `AI_REVIEW_DINGTALK_WEBHOOK`。要换机器人就引用另一个 Secret；清空值或 Secret 未配置则不通知。安全关键词默认 `gitea`，需与所选机器人一致；当前不支持加签机器人。
 - **工具版本**：标签与完整 SHA 必须配套，不要改成 main/latest。工具发布后，业务仓库需要手动升级这两个值。
 
 ## 4. 推送并查看结果
