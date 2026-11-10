@@ -17,10 +17,12 @@ class ReviewTests(unittest.TestCase):
     def test_missing_key_skips_all_work(self):
         for value in ("", "  "):
             with patch.dict(os.environ, {"AI_REVIEW_OPENAI_API_KEY": value}), \
-                    patch.object(run, "collect") as collect, \
-                    patch.object(run, "review_with_fallback") as review:
+                    patch.object(run, "collect_changes") as collect, \
+                    patch.object(run, "collect_context") as context, \
+                    patch.object(run, "review_project") as review:
                 self.assertEqual(run.main(), 0)
                 collect.assert_not_called()
+                context.assert_not_called()
                 review.assert_not_called()
 
     def test_primary_success_does_not_call_backup(self):

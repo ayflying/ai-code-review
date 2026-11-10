@@ -35,7 +35,7 @@ def sensitive(path: str) -> bool:
             or name.endswith((".pem", ".key", ".p12", ".pfx", ".lock", ".min.js")))
 
 
-def collect() -> tuple[str, list[str]]:
+def collect_changes() -> tuple[str, list[str], str, list[str]]:
     after = os.getenv("AI_REVIEW_AFTER", "").strip() or git("rev-parse", "HEAD").decode().strip()
     before = os.getenv("AI_REVIEW_BEFORE", "").strip()
     notes: list[str] = []
@@ -74,4 +74,10 @@ def collect() -> tuple[str, list[str]]:
         used += len(data)
     if skipped:
         notes.append(f"覆盖不完整：排除敏感路径、二进制、生成物或超限文件共 {skipped} 个；不能据此判断整个提交安全。")
-    return "\n".join(diffs), notes
+    return "\n".join(diffs), notes, after, paths
+
+
+def collect() -> tuple[str, list[str]]:
+    """保留仅收集差异的调用入口；编排使用同一次解析的提交和路径。"""
+    diff, notes, _, _ = collect_changes()
+    return diff, notes

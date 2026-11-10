@@ -12,8 +12,9 @@
 | --- | --- |
 | `changes.py` | 只读 Git 对象，确定 before..after，过滤与限制 diff |
 | `providers.py` | OpenAI Responses / Claude Messages 请求、主备切换 |
-| `report.py` | JSON 风险契约校验、Markdown 渲染，不猜关键词 |
-| `notify.py` | 仅风险钉钉通知、地址校验、关键词和回执检查 |
+| `review_context.py` | 从被审提交 Git 对象读取有限文档与 Skill，不读工作区、不执行脚本 |
+| `report.py` | JSON 契约与规范原文引用校验、区分明确问题/建议/待确认 |
+| `notify.py` | 审查事项钉钉通知、地址校验、关键词和回执检查 |
 | `run.py` | 编排、脱敏日志、临时报告、has_risk 步骤输出 |
 | `examples/ai-code-review.yml` | 业务接入模板、顶部配置、工具认证与固定版本校验、风险策略 |
 | `test_*.py` | 无真实密钥/网络的独立契约测试 |
@@ -22,7 +23,8 @@
 
 - OpenAI 密钥为空：全部跳过，包括 Claude 和钉钉。
 - OpenAI Responses 优先；失败/无效结构后才切 Claude 原生 Messages。发现风险本身不触发重审。
-- 有效 findings 非空才通知；仅待验证事项、调用失败不当作风险。模型不是安全保证。
+- 有效 findings（代码风险/明确违反规范）、suggestions 或 verification 任一非空都通知；建议和待确认不当作风险，不触发风险阻断。调用失败不伪装成模型结论。模型不是安全保证。
+- 项目文档和 Skill 仅作为不可信规则参考，不运行其中脚本；规范问题必须引用已加载文档的路径、行号和匹配原文。
 - 脚本正常返回 0；风险写到 GITHUB_OUTPUT 的 has_risk。是否失败由业务工作流最后一步按顶部开关决定，默认关闭。
 - 不用 job 级 continue-on-error，否则吞掉已开启的风险阻断；报告/通知失败不能伪装为安全结论。
 - 不执行业务源码、安装业务依赖、自动修复、自动合并或修改生产。

@@ -1,4 +1,4 @@
-"""钉钉自定义机器人通知：只发已确认的风险结果，不自动重试避免重复。"""
+"""钉钉通知包括明确问题、改进建议和待确认事项，不自动重试避免重复。"""
 
 import os
 from urllib.parse import parse_qs, urlsplit
@@ -6,12 +6,12 @@ from urllib.parse import parse_qs, urlsplit
 from providers import ReviewError, request_json
 
 
-def notify_risk(report: str, has_risk: bool) -> str:
-    if not has_risk:
-        return "未发现明确风险或审查未完成，不发送钉钉通知。"
+def notify_risk(report: str, should_notify: bool) -> str:
+    if not should_notify:
+        return "无明确问题、建议或待确认事项，或审查未完成，不发送钉钉通知。"
     webhook = os.getenv("AI_REVIEW_DINGTALK_WEBHOOK", "").strip()
     if not webhook:
-        return "发现风险，但未配置钉钉机器人密钥，未发送通知。"
+        return "有审查事项，但未配置钉钉机器人密钥，未发送通知。"
     # 只允许钉钉官方地址，避免配置错误导致报告发送到任意外部主机。
     try:
         url = urlsplit(webhook)
@@ -25,7 +25,7 @@ def notify_risk(report: str, has_risk: bool) -> str:
         keyword = os.getenv("AI_REVIEW_DINGTALK_KEYWORD", "gitea").strip()
         if not keyword or len(keyword.encode("utf-8")) > 200 or any(ord(c) < 32 for c in keyword):
             return "钉钉关键词无效，未发送通知。"
-        title = f"{keyword} 代码风险报告"
+        title = f"{keyword} 代码审查报告"
         text = f"## {title}\n\n仓库：{repository}\n\n提交：{sha}\n\n"
         if run_url:
             text += f"完整报告：{run_url}\n\n"
@@ -40,6 +40,6 @@ def notify_risk(report: str, has_risk: bool) -> str:
         })
         if type(response.get("errcode")) is not int or response["errcode"] != 0:
             return "钉钉拒绝通知，请检查机器人关键字或安全配置（不回显响应）。"
-        return "钉钉机器人已接受风险通知。"
+        return "钉钉机器人已接受审查通知。"
     except (ReviewError, ValueError, OSError):
         return "钉钉通知失败或投递状态未知，不影响 CI；未自动重试。"

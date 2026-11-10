@@ -11,18 +11,20 @@ import run
 
 class PolicyTests(unittest.TestCase):
     def test_report_exposes_risk_but_never_exits_before_notification(self):
-        for risk in (True, False):
+        for risk, should_notify in ((True, True), (False, True), (False, False)):
             with tempfile.TemporaryDirectory() as directory:
                 output = Path(directory) / "output"
                 with patch.dict(os.environ, {
                     "AI_REVIEW_OPENAI_API_KEY": "test-key", "GITHUB_OUTPUT": str(output),
                     "RUNNER_TEMP": directory,
-                }), patch.object(run, "collect", return_value=("diff", [])), \
-                        patch.object(run, "review_with_fallback", return_value=("报告", [], risk)), \
+                }), patch.object(run, "collect_changes", return_value=("diff", [], "a" * 40, ["app.py"])), \
+                        patch.object(run, "collect_context", return_value=("规范", [], {"AGENTS.md": 1})), \
+                        patch.object(run, "review_project", return_value=("报告", [], risk, should_notify)) as review, \
                         patch.object(run, "notify_risk", return_value="通知状态") as notify:
                     self.assertEqual(run.main(), 0)
                     notify.assert_called_once()
-                    self.assertEqual(notify.call_args.args[1], risk)
+                    review.assert_called_once_with("diff", "规范", {"AGENTS.md": 1})
+                    self.assertEqual(notify.call_args.args[1], should_notify)
                     self.assertEqual(output.read_text().strip(), f"has_risk={str(risk).lower()}")
 
     def test_workflow_applies_policy_after_report(self):

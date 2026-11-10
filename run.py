@@ -9,9 +9,10 @@ from pathlib import Path
 
 # -I 隔离 PYTHONPATH 和当前工作目录，仅加载本目录的审查模块。
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from changes import collect  # noqa: E402
+from changes import collect_changes  # noqa: E402
 from notify import notify_risk  # noqa: E402
-from providers import review_with_fallback  # noqa: E402
+from providers import review_project  # noqa: E402
+from review_context import collect_context  # noqa: E402
 
 
 def sanitize(text: str) -> str:
@@ -29,10 +30,13 @@ def main() -> int:
         print("未配置 OpenAI 密钥，跳过 AI Code Review（不会调用 Claude）。")
         return 0
     has_risk = False
+    should_notify = False
     try:
-        diff, notes = collect()
+        diff, notes, after, paths = collect_changes()
         if diff:
-            report, attempts, has_risk = review_with_fallback(diff)
+            context, context_notes, documents = collect_context(after, paths)
+            notes.extend(context_notes)
+            report, attempts, has_risk, should_notify = review_project(diff, context, documents)
             notes.extend(attempts)
         else:
             report = "没有可供审查的文本变更，未调用 AI；不代表整个提交无风险。"
@@ -42,7 +46,7 @@ def main() -> int:
     safe = sanitize(body)
     # 日志为所有 Gitea 版本的主要报告入口，不依赖 GitHub 专属制品协议。
     print(safe)
-    print(notify_risk(safe, has_risk))
+    print(notify_risk(safe, should_notify))
     directory = Path(os.getenv("RUNNER_TEMP") or tempfile.gettempdir())
     try:
         (directory / "ai-code-review-report.md").write_text(safe + "\n", encoding="utf-8")
