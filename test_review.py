@@ -23,6 +23,12 @@ class ReviewTests(unittest.TestCase):
                 collect.assert_not_called()
                 review.assert_not_called()
 
+    def test_prompt_focuses_on_business_not_reviewer_operations(self):
+        self.assertIn("审查目标是被审业务项目", providers.SYSTEM)
+        self.assertIn("不提出锁定工具标签或调整工具参数的计划", providers.SYSTEM)
+        self.assertIn("实际秘密泄露、越权执行或破坏业务构建发布", providers.SYSTEM)
+        self.assertIn("返回空问题/建议/待确认数组", providers.SYSTEM)
+
     def test_primary_success_does_not_call_backup(self):
         with patch.object(providers, "review", return_value=EMPTY_REPORT) as review:
             text, notes, has_risk = providers.review_with_fallback("diff")
