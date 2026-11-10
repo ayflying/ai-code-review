@@ -1,4 +1,14 @@
 name: AI Code Review
+
+# ===== 各业务仓库只需修改这里 =====
+env:
+  AI_REVIEW_BLOCK_ON_RISK: 'false'  # true：发现明确风险时任务失败；false：只报告
+  AI_REVIEW_DINGTALK_WEBHOOK: ${{ secrets.AI_REVIEW_DINGTALK_WEBHOOK }}  # 含令牌，禁止明文提交
+  AI_REVIEW_DINGTALK_KEYWORD: 'gitea'  # 与机器人安全关键词保持一致
+  AI_REVIEW_TOOL_REF: 'v1.1.0'
+  AI_REVIEW_TOOL_SHA: '84d21423b4f28f882addbd533f67f36489a5c38b'
+# =================================
+
 on:
   push:
     branches: ['**']
@@ -6,9 +16,8 @@ on:
 
 jobs:
   review:
-    name: AI 代码风险报告（不拦截）
+    name: AI 代码风险审查
     runs-on: ubuntu-latest
-    continue-on-error: true
     permissions:
       contents: read
     steps:
@@ -27,6 +36,7 @@ jobs:
 
       - name: 检出待审业务仓库
         if: steps.config.outputs.enabled == 'true'
+        continue-on-error: true
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
@@ -35,9 +45,9 @@ jobs:
       # 审查器放在 runner 临时目录，不覆盖业务仓库、不纳入审查 diff。
       - name: 拉取独立审查器
         if: steps.config.outputs.enabled == 'true'
+        continue-on-error: true
         shell: bash
         env:
-          AI_REVIEW_TOOL_REF: v1.0.0
           AI_REVIEW_TOOL_TOKEN: ${{ secrets.AI_REVIEW_TOOL_READ_TOKEN || gitea.token }}
         run: |
           set -euo pipefail
@@ -49,11 +59,12 @@ jobs:
           chmod 700 "$askpass"
           GIT_ASKPASS="$askpass" GIT_TERMINAL_PROMPT=0 git clone --quiet --depth 1 --branch "$AI_REVIEW_TOOL_REF" \
             https://gitea.adesk.com/actions/ai-code-review.git "$tool_dir"
-          test "$(git -C "$tool_dir" rev-parse HEAD)" = '52fb650916da7638bb2fa7219d5d5df84fcf4f84'
+          test "$(git -C "$tool_dir" rev-parse HEAD)" = "$AI_REVIEW_TOOL_SHA"
           echo "AI_REVIEW_TOOL_DIR=$tool_dir" >> "$GITHUB_ENV"
           echo "审查器版本：$(git -C "$tool_dir" rev-parse HEAD)"
 
       - name: 生成中文风险报告
+        id: review
         if: steps.config.outputs.enabled == 'true'
         continue-on-error: true
         shell: bash
@@ -64,14 +75,31 @@ jobs:
           AI_REVIEW_CLAUDE_API_KEY: ${{ secrets.AI_REVIEW_CLAUDE_API_KEY }}
           AI_REVIEW_CLAUDE_BASE_URL: ${{ vars.AI_REVIEW_CLAUDE_BASE_URL }}
           AI_REVIEW_CLAUDE_MODEL: ${{ vars.AI_REVIEW_CLAUDE_MODEL }}
-          AI_REVIEW_DINGTALK_WEBHOOK: ${{ secrets.AI_REVIEW_DINGTALK_WEBHOOK }}
           AI_REVIEW_REPOSITORY: ${{ gitea.repository }}
           AI_REVIEW_RUN_URL: ${{ gitea.server_url }}/${{ gitea.repository }}/actions/runs/${{ gitea.run_id }}
           AI_REVIEW_BEFORE: ${{ gitea.event.before }}
           AI_REVIEW_AFTER: ${{ gitea.sha }}
         run: |
-          if command -v python3 >/dev/null 2>&1; then
+          if [[ -z "${AI_REVIEW_TOOL_DIR:-}" ]]; then
+            echo '审查未完成：独立审查器拉取失败。'
+          elif command -v python3 >/dev/null 2>&1; then
             python3 -I "$AI_REVIEW_TOOL_DIR/run.py"
           else
             echo '审查未完成：runner 未安装 Python 3（需要 3.10+），未调用 AI。'
           fi
+
+      # 不使用 job 级 continue-on-error，否则启用阻断也会被吞掉。
+      - name: 应用风险阻断策略
+        shell: bash
+        env:
+          HAS_RISK: ${{ steps.review.outputs.has_risk }}
+        run: |
+          case "$AI_REVIEW_BLOCK_ON_RISK" in
+            true|false) ;;
+            *) echo '阻断配置无效，请填写字符串 true 或 false。'; exit 1 ;;
+          esac
+          if [[ "$AI_REVIEW_BLOCK_ON_RISK" == 'true' && "$HAS_RISK" == 'true' ]]; then
+            echo '发现明确代码风险，按仓库配置标记任务失败。'
+            exit 1
+          fi
+          echo '未触发风险阻断。'

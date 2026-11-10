@@ -1,16 +1,25 @@
 # AI Code Review
 
-通用 Gitea Actions 推送风险审查，不绑定项目和语言。只输出中文报告，不因发现风险或 API 错误阻拦 CI。不配置为合并必需检查。基础设施故障、取消和 runner 不可用仍可能导致工作流异常，不能保证任何情况下均为绿色。
+通用 Gitea Actions 推送风险审查，不绑定项目和语言。默认只输出中文报告，可通过业务 CI 顶部配置发现风险时让任务失败。API 或通知错误仍不按代码风险阻断。需要阻止合并时，另在分支保护中将此工作流设为必需检查。基础设施故障、取消和 runner 不可用仍可能导致工作流异常，不能保证任何情况下均为绿色。
 
 ## 接入与配置
 
 独立工具仓库：https://gitea.adesk.com/actions/ai-code-review 。只包含通用工具和示例，没有业务代码或凭据。
 
-将 `examples/ai-code-review.yml` 复制到业务仓库的 `.gitea/workflows/ai-code-review.yml`，不再复制 Python 脚本。工作流检出业务仓库后，把工具拉到 runner 临时目录，从业务仓库工作目录执行工具绝对路径，因此 Git diff 始终针对业务仓库而不是工具仓库。工具以 `v1.0.0` 版本拉取，示例同时校验完整提交 SHA `52fb650916da7638bb2fa7219d5d5df84fcf4f84`，升级时显式更新标签与SHA，不追随 main/latest。
+将 `examples/ai-code-review.yml` 复制到业务仓库的 `.gitea/workflows/ai-code-review.yml`，不再复制 Python 脚本。工作流检出业务仓库后，把工具拉到 runner 临时目录，从业务仓库工作目录执行工具绝对路径，因此 Git diff 始终针对业务仓库而不是工具仓库。工具以 `v1.1.0` 版本拉取，示例顶部同时配置并校验完整提交 SHA，升级时显式更新标签与 SHA，不追随 main/latest。
 
 工具仓库不存业务代码和密钥，但 actions 组织当前为受限可见，匿名克隆会被拒绝。示例通过临时 askpass 注入认证：优先使用业务仓库/组织的 `AI_REVIEW_TOOL_READ_TOKEN` Secret，否则尝试任务自带 `gitea.token`。若任务令牌不具备跨仓库读取权限，必须配置专用最小只读令牌（具备 actions/ai-code-review 仓库读取权限）。凭据不嵌入URL、不保存Git配置；不要把AI Key当作Git凭据，也不要为方便克隆扩大组织可见性。
 
 runner 使用 `ubuntu-latest` 标签，需能下载 checkout 动作、克隆工具及访问模型服务，并预装 Python 3.10+（python3）；只使用标准库，不下载 Python/pip，不安装或运行项目依赖。Secrets/Variables 配置在被审查的业务仓库或其所属组织，不是仅配置在 actions 工具组织；组织间不会自动共享密钥。
+
+### CI 顶部可调参数
+
+- `AI_REVIEW_BLOCK_ON_RISK: 'false'`：只报告；改为 `'true'` 时任何明确风险（high/medium/low）都会在报告和通知完成后使任务失败。仅待验证事项或审查失败不触发风险阻断。不回滚已推送代码；阻止合并需配置分支保护。
+- `AI_REVIEW_DINGTALK_WEBHOOK: ${{ secrets.AI_REVIEW_DINGTALK_WEBHOOK }}`：可在顶部改成另一个 Secret 名称以选择机器人；不要把含 access_token 的真实地址明文提交。空值表示不发送通知。
+- `AI_REVIEW_DINGTALK_KEYWORD: 'gitea'`：可换成对应机器人的安全关键词，消息标题和正文都会带上；需为非空单行，最多 200 UTF-8 字节。
+- `AI_REVIEW_TOOL_REF` / `AI_REVIEW_TOOL_SHA`：审查器标签与完整 SHA 配套修改。
+
+以上参数由各业务仓库自行决定，无需改工具源码。风险策略独立在最后一步执行，不用 job 级 continue-on-error 吞掉阻断结果；模型和通知步骤仍为可容错。
 
 组织或仓库 Actions Secrets：
 
@@ -39,7 +48,7 @@ OpenAI 使用 Responses API，禁止存储响应（store=false）；Claude 使�
 
 模型必须返回 JSON 总结、风险 findings 和待验证事项，脚本校验后生成中文 Markdown。仅 findings 存在有效风险条目时发送；无风险、只有待验证事项、审查失败、缺 OpenAI 密钥均不通知。不用自然语言关键词猜测有无风险；结果格式异常触发备用服务。
 
-消息固定包含关键字 `gitea`、仓库、提交、CI 链接和报告；超长报告按 UTF-8 字节截断并引导查看完整日志。只允许 `https://oapi.dingtalk.com/robot/send` 地址，不跟随重定向；不发送原始 diff。机器人的关键字安全模式由群管理员配置，若另有加签要求需另行接入，当前不支持签名密钥。通知属于额外向群内分享代码风险信息，请确保群成员具备查看权限。
+消息包含顶部配置的关键词（默认 `gitea`）、仓库、提交、CI 链接和报告；超长报告按 UTF-8 字节截断并引导查看完整日志。只允许 `https://oapi.dingtalk.com/robot/send` 地址，不跟随重定向；不发送原始 diff。机器人的关键字安全模式由群管理员配置，若另有加签要求需另行接入，当前不支持签名密钥。通知属于额外向群内分享代码风险信息，请确保群成员具备查看权限。
 
 钉钉 HTTP 成功不代表投递成功，必须检查 errcode=0；失败仅记录固定提示，不打印 Webhook、令牌和服务错误正文、不影响 CI。不自动重试以避免重复发送；手动重新运行 CI 可能重复通知。不发送虚构风险做线上测试；本地使用 mock 验证风险、无风险、拒绝和网络异常路径。
 
