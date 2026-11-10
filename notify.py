@@ -26,9 +26,10 @@ def notify_risk(report: str, should_notify: bool) -> str:
         keyword = os.getenv("AI_REVIEW_DINGTALK_KEYWORD", "gitea").strip()
         if not keyword or len(keyword.encode("utf-8")) > 200 or any(ord(c) < 32 for c in keyword):
             return "钉钉关键词无效，未发送通知。"
-        title = f"{keyword} 代码审查报告"
+        repository_label = short_text(repository, 100)
+        title = f"{repository_label} · {keyword} 代码审查报告"
         subject = short_text(os.getenv("AI_REVIEW_COMMIT_SUBJECT", ""), 100)
-        text = f"## {title}\n\n{short_text(repository, 100)} · {short_text(sha, 8)}\n\n"
+        text = f"# {repository_label}\n\n**{keyword} 代码审查报告** · {short_text(sha, 8)}\n\n"
         if subject:
             text += f"本次提交：{subject}\n\n"
         text += summarize(report)
