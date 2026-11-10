@@ -18,7 +18,7 @@
 | `notify.py` | 审查事项钉钉通知、地址校验、关键词和回执检查 |
 | `run.py` | 稳定入口 v1：无参数生成报告、--policy 应用最终策略；脱敏日志与 has_risk 输出 |
 | `settings.py` | 扩展 JSON 非密钥配置白名单和风险阻断策略 |
-| `examples/ai-code-review.yml` | 业务接入模板、顶部配置、工具认证与固定版本校验、风险策略 |
+| `examples/ai-code-review.yml` | 业务接入模板、顶部配置、工具认证与版本选择、风险策略 |
 | `test_*.py` | 无真实密钥/网络的独立契约测试 |
 
 ## 关键契约
@@ -55,4 +55,4 @@ Windows 若无全局 Python，可使用本机现有 `D:\git\sonow\ad-insight\bac
 
 保持启动协议 v1 兼容：Python 3.10+ 标准库、run.py 无参数生成报告、run.py --policy 最终判断、has_risk 步骤输出、现有 Secrets/Variables 名称。新非密钥参数通过 AI_REVIEW_OPTIONS_JSON 白名单扩展，密钥不能走 JSON。风险策略放工具端，不能使用容错吞掉最终阻断。
 
-标签不可覆盖或移动；为回退保留不可变发布标签。默认自动更新不再要求模板同步标签/SHA；需要锁定时由用户在后台 Variables 设置 AI_REVIEW_TOOL_REF 和可选完整 SHA。v1.2.0 及更早不支持 --policy，不能用稳定入口直接回退到这些标签。工具仓库 main 写入者必须可信，更新会直接影响接入仓库后续 CI。
+标签不可覆盖或移动；为回退保留不可变发布标签。默认自动更新不再要求模板同步版本；需要锁定时由用户在后台 Variables 设置 AI_REVIEW_TOOL_REF 为发布标签。不再提供 TOOL_SHA 配置和校验，仅在日志记录实际提交 SHA。v1.2.0 及更早不支持 --policy，不能用稳定入口直接回退到这些标签。工具仓库 main 写入者必须可信，更新会直接影响接入仓库后续 CI。

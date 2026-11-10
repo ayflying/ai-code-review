@@ -47,7 +47,6 @@
 | `AI_REVIEW_BLOCK_ON_RISK` | `false` | `true` 时明确代码风险/规范问题让 CI 失败；建议和待确认不阻断 |
 | `AI_REVIEW_DINGTALK_KEYWORD` | `gitea` | 与机器人的安全关键词一致 |
 | `AI_REVIEW_TOOL_REF` | `main` | 自动使用工具最新代码；需要回退/锁定时改为不可变发布标签 |
-| `AI_REVIEW_TOOL_SHA` | 空 | 可选的完整提交校验值；自动更新时留空，锁定标签时可配对应 SHA |
 | `AI_REVIEW_MAX_BATCHES` | `20` | 最大审查批数，允许1–200 |
 | `AI_REVIEW_MAX_FILES` | `300` | 最大考虑文件数，允许1–5000 |
 | `AI_REVIEW_BATCH_BYTES` | `100000` | 每批差异字节数，默认100KB，允许1000–1000000 |

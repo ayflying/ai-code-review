@@ -7,7 +7,6 @@ env:
   AI_REVIEW_DINGTALK_WEBHOOK: ${{ secrets.AI_REVIEW_DINGTALK_WEBHOOK }}  # 默认机器人；不填其他地址，禁止明文；Secret 缺失则不通知
   AI_REVIEW_DINGTALK_KEYWORD: ${{ vars.AI_REVIEW_DINGTALK_KEYWORD || 'gitea' }}  # 机器人安全关键词
   AI_REVIEW_TOOL_REF: ${{ vars.AI_REVIEW_TOOL_REF || 'main' }}  # 默认自动更新；可在后台改为不可变标签回退/锁定
-  AI_REVIEW_TOOL_SHA: ${{ vars.AI_REVIEW_TOOL_SHA }}  # 可选：固定完整 SHA 校验；自动更新时留空
   AI_REVIEW_MAX_BATCHES: ${{ vars.AI_REVIEW_MAX_BATCHES || '20' }}  # 最多审查批数，允许1–200；调大会增加调用费用和时间
   AI_REVIEW_MAX_FILES: ${{ vars.AI_REVIEW_MAX_FILES || '300' }}  # 最多考虑文件数，允许1–5000
   AI_REVIEW_BATCH_BYTES: ${{ vars.AI_REVIEW_BATCH_BYTES || '100000' }}  # 单批差异字节数，默认100KB；允许1000–1000000
@@ -65,10 +64,6 @@ jobs:
           chmod 700 "$askpass"
           GIT_ASKPASS="$askpass" GIT_TERMINAL_PROMPT=0 git clone --quiet --depth 1 --branch "$AI_REVIEW_TOOL_REF" \
             https://gitea.adesk.com/actions/ai-code-review.git "$tool_dir"
-          if [[ -n "$AI_REVIEW_TOOL_SHA" ]]; then
-            [[ "$AI_REVIEW_TOOL_SHA" =~ ^[0-9a-fA-F]{40}$|^[0-9a-fA-F]{64}$ ]]
-            test "$(git -C "$tool_dir" rev-parse HEAD)" = "${AI_REVIEW_TOOL_SHA,,}"
-          fi
           echo "AI_REVIEW_TOOL_DIR=$tool_dir" >> "$GITHUB_ENV"
           echo "审查器版本：$(git -C "$tool_dir" rev-parse HEAD)"
 

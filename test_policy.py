@@ -31,7 +31,8 @@ class PolicyTests(unittest.TestCase):
         self.assertIn("vars.AI_REVIEW_BLOCK_ON_RISK || 'false'", workflow)
         self.assertIn('"$AI_REVIEW_TOOL_DIR/run.py" --policy', workflow)
         self.assertIn("vars.AI_REVIEW_TOOL_REF || 'main'", workflow)
-        self.assertIn('if [[ -n "$AI_REVIEW_TOOL_SHA" ]]', workflow)
+        self.assertNotIn("AI_REVIEW_TOOL_SHA", workflow)
+        self.assertIn('echo "审查器版本：$(git -C "$tool_dir" rev-parse HEAD)"', workflow)
         self.assertIn("vars.AI_REVIEW_OPTIONS_JSON", workflow)
         for name, default in (("MAX_BATCHES", "20"), ("MAX_FILES", "300"),
                               ("BATCH_BYTES", "100000"), ("INPUT_BYTES", "160000")):

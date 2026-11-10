@@ -17,7 +17,7 @@
 
 ### 标签与模板的重要区别
 
-使用 main 上的 `examples/ai-code-review.yml` 接入。模板默认拉取 main，不再随发布改动；后台 Variables 可设置 TOOL_REF 与可选 SHA 锁定/回退。发布标签仍不可移动。稳定协议：run.py 无参数、run.py --policy、has_risk 输出、AI_REVIEW_OPTIONS_JSON 白名单非密钥扩展；现有 Secrets 名称保持兼容。v1.2.0 及更早不支持 --policy，不兼容此新入口。main 更新会直接影响所有自动更新的 CI，须限制工具写权限。新增 Secrets 或 Actions/运行环境变动仍可能需要迁移，不能承诺无限兼容。
+使用 main 上的 `examples/ai-code-review.yml` 接入。模板默认拉取 main，不再随发布改动；后台 Variables 可设置 TOOL_REF 为发布标签锁定/回退。用户已确认移除 TOOL_SHA 参数及校验，实际提交 SHA 仅用于日志追踪。发布标签仍不可移动。稳定协议：run.py 无参数、run.py --policy、has_risk 输出、AI_REVIEW_OPTIONS_JSON 白名单非密钥扩展；现有 Secrets 名称保持兼容。v1.2.0 及更早不支持 --policy，不兼容此新入口。main 更新会直接影响所有自动更新的 CI，须限制工具写权限。新增 Secrets 或 Actions/运行环境变动仍可能需要迁移，不能承诺无限兼容。
 
 ## 已约定的行为
 
