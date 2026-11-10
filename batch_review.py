@@ -7,7 +7,7 @@ import time
 from providers import SYSTEM, review_data
 from report import parse_result
 from review_context import collect_context
-from settings import limit_value
+from settings import limit_value, notification_level, should_notify_result
 
 # 按 UTF-8 字节保守估计 token 上界（非精确分词），预留输出和协议开销。
 MAX_INPUT_BYTES = 160_000
@@ -29,6 +29,7 @@ def _unique(items: list) -> list:
 def review_batches(batches: list[tuple[str, list[str]]], after: str
                    ) -> tuple[str, list[str], bool, bool]:
     """每批失败不覆盖其他批结论；建议通知与明确问题阻断分别累计。"""
+    level = notification_level()  # 请求前验证，避免无效配置消耗模型调用。
     input_bytes = limit_value("AI_REVIEW_INPUT_BYTES", MAX_INPUT_BYTES)
     notes = [f"分批审查：共 {len(batches)} 批；单次输入预算 {input_bytes} 字节；各批独立上下文，跨批关联问题可能漏报。"]
     summaries: list[str] = []
@@ -71,7 +72,8 @@ def review_batches(batches: list[tuple[str, list[str]]], after: str
     suggestions = _unique(suggestions)
     verification = _unique(verification)
     risk = bool(findings)
-    notify = bool(findings or suggestions or verification)
+    notify = should_notify_result(findings, suggestions, verification)
+    notes.append(f"钉钉通知门槛：{level}；{'达到门槛' if notify else '未达到门槛，不发送通知'}；不影响风险阻断。")
     # 每批已经严格校验；分组渲染避免汇总超过单批40条契约而丢掉有效结论。
     parts = [f"已完成 {completed}/{len(batches)} 批。未完成批次不代表安全。"]
     if not completed:

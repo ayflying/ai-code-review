@@ -47,6 +47,26 @@ class SettingsTests(unittest.TestCase):
             with patch.dict(os.environ, {"AI_REVIEW_MAX_BATCHES": value}, clear=True):
                 self.assertEqual(policy(), 1)
 
+    def test_notification_threshold_matrix_independent_of_blocking(self):
+        from settings import notification_level, should_notify_result
+        ranks = {"low": 1, "medium": 2, "high": 3}
+        for level in ("", "all", "low", "medium", "high"):
+            with patch.dict(os.environ, {"AI_REVIEW_NOTIFY_LEVEL": level}, clear=True):
+                for severity, rank in ranks.items():
+                    self.assertEqual(should_notify_result([{"severity": severity}], [], []),
+                                     level in {"", "all"} or rank >= ranks[level])
+                self.assertEqual(should_notify_result([], ["建议"], ["待确认"]), level in {"", "all"})
+                self.assertFalse(should_notify_result([], [], []))
+        with patch.dict(os.environ, {"AI_REVIEW_OPTIONS_JSON": '{"notify_level":"high"}',
+                                    "AI_REVIEW_NOTIFY_LEVEL": "all"}, clear=True):
+            load_settings()
+            self.assertEqual(notification_level(), "high")
+        with patch.dict(os.environ, {"AI_REVIEW_NOTIFY_LEVEL": "invalid"}, clear=True):
+            with self.assertRaises(ValueError):
+                notification_level()
+            # 通知配置不改变风险阻断策略。
+            self.assertEqual(policy(), 0)
+
     def test_invalid_block_switch_fails(self):
         with patch.dict(os.environ, {"AI_REVIEW_BLOCK_ON_RISK": "yes"}, clear=True):
             self.assertEqual(policy(), 1)

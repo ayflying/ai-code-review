@@ -6,6 +6,7 @@ import os
 # 新配置在工具端加入这里，业务工作流无需新增 env 映射。
 OPTIONS = {
     "block_on_risk": "AI_REVIEW_BLOCK_ON_RISK",
+    "notify_level": "AI_REVIEW_NOTIFY_LEVEL",
     "dingtalk_keyword": "AI_REVIEW_DINGTALK_KEYWORD",
     "openai_model": "AI_REVIEW_OPENAI_MODEL",
     "openai_base_url": "AI_REVIEW_OPENAI_BASE_URL",
@@ -57,6 +58,22 @@ def load_settings() -> None:
             raise ValueError("扩展配置值无效")
         updates[OPTIONS[key]] = value
     os.environ.update(updates)
+
+
+def notification_level() -> str:
+    """通知门槛独立于风险阻断；非法值不能静默降级或关闭通知。"""
+    level = os.getenv("AI_REVIEW_NOTIFY_LEVEL", "").strip() or "all"
+    if level not in {"all", "low", "medium", "high"}:
+        raise ValueError("钉钉通知级别无效，仅允许all/low/medium/high")
+    return level
+
+
+def should_notify_result(findings: list[dict], suggestions: list[str], verification: list[str]) -> bool:
+    level = notification_level()
+    if level == "all":
+        return bool(findings or suggestions or verification)
+    rank = {"low": 1, "medium": 2, "high": 3}
+    return any(rank[item["severity"]] >= rank[level] for item in findings)
 
 
 def policy() -> int:

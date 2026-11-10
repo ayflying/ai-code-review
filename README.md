@@ -45,6 +45,7 @@
 | 名称 | 默认值 | 说明 |
 | --- | --- | --- |
 | `AI_REVIEW_BLOCK_ON_RISK` | `false` | `true` 时明确代码风险/规范问题让 CI 失败；建议和待确认不阻断 |
+| `AI_REVIEW_NOTIFY_LEVEL` | `all` | 通知门槛：all 包含问题/建议/待确认；low、medium、high 仅明确问题达到对应级别才通知；不影响阻断 |
 | `AI_REVIEW_DINGTALK_KEYWORD` | `gitea` | 与机器人的安全关键词一致 |
 | `AI_REVIEW_TOOL_REF` | `main` | 自动使用工具最新代码；需要回退/锁定时改为不可变发布标签 |
 | `AI_REVIEW_MAX_BATCHES` | `20` | 最大审查批数，允许1–200 |
@@ -55,7 +56,7 @@
 
 机器人默认使用环境已配置的 `AI_REVIEW_DINGTALK_WEBHOOK` Secret；更换机器人就在后台更新该 Secret，未配置则不通知。禁止明文地址；当前不支持加签机器人。
 
-扩展配置示例：`{"block_on_risk":true,"dingtalk_keyword":"gitea"}`。目前支持 `block_on_risk`、`dingtalk_keyword`、`openai_model`、`openai_base_url`、`claude_model`、`claude_base_url`、`max_batches`、`max_files`、`batch_bytes`、`input_bytes`，显式值优先于单项变量；未知字段会报配置错误。不要放密钥。
+扩展配置示例：`{"block_on_risk":true,"dingtalk_keyword":"gitea"}`。目前支持 `block_on_risk`、`notify_level`、`dingtalk_keyword`、`openai_model`、`openai_base_url`、`claude_model`、`claude_base_url`、`max_batches`、`max_files`、`batch_bytes`、`input_bytes`，显式值优先于单项变量；未知字段会报配置错误。不要放密钥。
 
 默认跟随 main 意味着工具更新会直接影响后续 CI，必须限制工具仓库写权限。日志记录实际运行 SHA；需要复现时先锁定发布标签。旧标签必须支持稳定入口 v1（含 `--policy`），例如 v1.2.0 及更早版本不支持该入口，不能直接回退到这些标签。
 
@@ -66,7 +67,8 @@
 在 **生成中文风险报告** 步骤查看报告：
 
 - 主模型优先，调用失败或报告格式无效时才使用备用模型。
-- 报告分为明确问题、改进建议、待确认事项；任一有内容都会发钉钉。全部为空或模型审查失败不发送。
+- 报告分为明确问题、改进建议、待确认事项；默认 `all` 下任一有内容都会发钉钉。设为 `low`/`medium`/`high` 后，明确问题（含规范问题）达到门槛才发送；纯建议/待确认不触发。触发后消息与产物仍包含全部结果。全部为空或模型审查失败不发送。
+- 通知门槛与 CI 阻断独立：例如门槛 `high`、阻断 `true` 时，low 问题仍可让 CI 失败但不发通知。旧模板可用 `AI_REVIEW_OPTIONS_JSON={"notify_level":"medium"}`，无须为此更换工作流。非法级别会明确报配置异常，不静默放宽。
 - 钉钉只发简短摘要：仓库与短提交号、问题/建议/待确认数量、最多两条问题影响，以及一个报告产物在线预览链接；不复制覆盖日志和整份报告，不额外调用模型总结。新模板先上传产物再通知；直接打开 HTML 报告在线预览（实例须支持产物预览），另保留 Markdown 下载，问题详情在前、覆盖说明在后。通知展示提交说明及重点影响，不列源码路径和行号。链接固定本次产物，保留30天，私有仓库需登录及读取权限；上传失败不发无效链接。已接入的旧模板需要一次性补充上传和通知步骤，直接复制最新版模板即可。
 - 钉钉通知成功以机器人返回 `errcode=0` 为准，不能只看 HTTP 成功或 CI 绿色。
 - 不要通过引入漏洞或伪造风险测试通知；真实测试消息需明确授权并标注测试用途。

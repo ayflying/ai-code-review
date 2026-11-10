@@ -9,7 +9,7 @@ from notification_summary import short_text, summarize
 
 def notify_risk(report: str, should_notify: bool) -> str:
     if not should_notify:
-        return "无明确问题、建议或待确认事项，或审查未完成，不发送钉钉通知。"
+        return "无有效审查事项、审查未完成或未达到通知门槛，不发送钉钉通知。"
     webhook = os.getenv("AI_REVIEW_DINGTALK_WEBHOOK", "").strip()
     if not webhook:
         return "有审查事项，但未配置钉钉机器人密钥，未发送通知。"

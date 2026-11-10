@@ -1,5 +1,6 @@
 """多批聚合不丢风险、不重复通知的离线契约。"""
 
+import os
 import unittest
 from unittest.mock import patch
 
@@ -25,6 +26,18 @@ class BatchReviewTests(unittest.TestCase):
         self.assertEqual(context.call_args_list[0].args[1], ["a/x.py"])
         self.assertEqual(review.call_args_list[1].args, ("diffB", "规范B", {}))
         self.assertIn("跨批", notes[0])
+
+    def test_notify_threshold_keeps_risk_and_full_report(self):
+        low = {**FINDING, "severity": "low"}
+        with patch.dict(os.environ, {"AI_REVIEW_NOTIFY_LEVEL": "high"}), \
+                patch.object(batch_review, "collect_context", return_value=("", [], {})), \
+                patch.object(batch_review, "review_data", return_value=(data([low], ["建议"], ["确认"]), [], "OPENAI")):
+            text, notes, risk, notify = batch_review.review_batches([("diff", [])], "a" * 40)
+        self.assertTrue(risk)
+        self.assertFalse(notify)
+        self.assertIn("### low", text)
+        self.assertIn("建议", text)
+        self.assertTrue(any("未达到门槛" in note for note in notes))
 
     def test_failed_batch_does_not_erase_successful_risk(self):
         with patch.object(batch_review, "collect_context", return_value=("", [], {})), \
