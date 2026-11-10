@@ -19,6 +19,14 @@ MAX_TOTAL_BYTES = 20_000_000  # 全局资源硬上限；默认实际预算为20*
 _HUNK = re.compile(r"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@([^\n]*)(?:\n)?$")
 
 
+class GitReadError(ValueError):
+    """Git命令失败；不附带可能含敏感内容的stderr。"""
+
+
+class GitOutputLimitError(ValueError):
+    """Git输出超过调用方指定的读取预算。"""
+
+
 def git(*args: str, limit: int = 200_000) -> bytes:
     # 文件落盘避免先无界捕获大型 diff 到内存；git 不执行仓库提供的过滤器。
     with tempfile.TemporaryFile() as output:
@@ -27,11 +35,11 @@ def git(*args: str, limit: int = 200_000) -> bytes:
             stdin=subprocess.DEVNULL, timeout=45, check=False,
         )
         if process.returncode:
-            raise ValueError("无法读取 Git 对象，审查未完成")
+            raise GitReadError("无法读取 Git 对象，审查未完成")
         output.seek(0)
         data = output.read(limit + 1)
     if len(data) > limit:
-        raise ValueError("Git 输出超过限制，审查未完成")
+        raise GitOutputLimitError("Git 输出超过限制，审查未完成")
     return data
 
 

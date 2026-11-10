@@ -166,7 +166,7 @@ class ContextTests(unittest.TestCase):
                 patch.object(review_context, "git", wraps=git) as calls:
             text, notes, counts = collect_context(after, [])
         self.assertEqual((text, counts), ("", {}))
-        self.assertTrue(any("覆盖不完整" in note and "超限" in note for note in notes))
+        self.assertTrue(any("覆盖不完整" in note and "超过 1 字节读取上限" in note for note in notes))
         self.assertFalse(any(call.args[0] == "cat-file" for call in calls.call_args_list))
 
     def test_control_paths_and_gitlinks_never_loaded(self):

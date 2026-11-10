@@ -9,7 +9,7 @@ import subprocess
 import unicodedata
 from pathlib import PurePosixPath
 
-from changes import git, sensitive
+from changes import GitOutputLimitError, GitReadError, git, sensitive
 
 MAX_FILES = 20
 MAX_FILE_BYTES = 12_000
@@ -73,9 +73,21 @@ def collect_context(after: str, paths: list[str], max_bytes: int = MAX_TOTAL_BYT
     try:
         git("rev-parse", "--verify", after + "^{commit}")
         raw = git("ls-tree", "-r", "-z", "--full-tree", after, limit=MAX_TREE_BYTES)
-    except (ValueError, OSError, subprocess.TimeoutExpired):
-        # Do not expose raw Git errors or paths; changes.git already bounds output.
-        return "", ["覆盖不完整：规范文档 Git 清单读取失败或超限，未加载文档。"], {}
+    except GitOutputLimitError:
+        reason = f"仓库文件清单超过 {MAX_TREE_BYTES:,} 字节读取上限"
+    except subprocess.TimeoutExpired:
+        reason = "Git 读取超时"
+    except GitReadError:
+        reason = "Git 命令执行失败（提交对象校验或文件清单读取失败）"
+    except OSError:
+        reason = "无法启动 Git 或访问本机读取资源"
+    except ValueError:
+        reason = "Git 返回的数据无效"
+    else:
+        reason = ""
+    if reason:
+        # 不回显原始错误、对象名或命令stderr。
+        return "", [f"覆盖不完整：{reason}；未加载项目规范文档，代码差异审查继续。"], {}
     tree: dict[str, tuple[str, str, str]] = {}
     for entry in raw.split(b"\0"):
         if not entry:
