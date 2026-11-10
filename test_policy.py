@@ -33,6 +33,9 @@ class PolicyTests(unittest.TestCase):
         self.assertIn("vars.AI_REVIEW_TOOL_REF || 'main'", workflow)
         self.assertIn('if [[ -n "$AI_REVIEW_TOOL_SHA" ]]', workflow)
         self.assertIn("vars.AI_REVIEW_OPTIONS_JSON", workflow)
+        for name, default in (("MAX_BATCHES", "20"), ("MAX_FILES", "300"),
+                              ("BATCH_BYTES", "100000"), ("INPUT_BYTES", "160000")):
+            self.assertIn(f"vars.AI_REVIEW_{name} || '{default}'", workflow)
         self.assertIn("steps.review.outputs.has_risk", workflow)
         self.assertNotIn("    continue-on-error: true\n    permissions:", workflow)
         self.assertLess(workflow.index("生成中文风险报告"), workflow.index("应用风险阻断策略"))

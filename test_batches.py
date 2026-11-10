@@ -95,7 +95,8 @@ class BatchTests(unittest.TestCase):
             return result.encode() if isinstance(result, str) else result
 
         with patch.object(changes, "_resolve_changes", return_value=("a" * 40, "b" * 40, [], list(files))), \
-                patch.object(changes, "_read_diff", side_effect=read_diff) as reader:
+                patch.object(changes, "_read_diff", side_effect=read_diff) as reader, \
+                patch.object(changes, "limit_value", side_effect=lambda name, default=None: default if default is not None else 160000):
             patches = [patch.object(changes, name, value) for name, value in limits.items()]
             for item in patches:
                 item.start()
@@ -109,7 +110,7 @@ class BatchTests(unittest.TestCase):
     def test_multiple_files_membership_and_packing(self):
         files = {f"file{i}.py": patch_text(f"file{i}.py") for i in range(4)}
         (batches, notes, after), _ = self.collect(files, MAX_BATCH_BYTES=230)
-        self.assertFalse(notes)
+        self.assertTrue(any("分批配置" in note for note in notes))
         self.assertEqual(after, "b" * 40)
         self.assertEqual([p for _, paths in batches for p in paths], list(files))
         self.assertLess(len(batches), 4)
@@ -149,6 +150,18 @@ class BatchTests(unittest.TestCase):
         self.assertEqual(batches[0][1], ["first.py", "last.py"])
         self.assertIn("读取失败", "".join(notes))
         self.assertIn("不是有效 UTF-8", "".join(notes))
+
+    def test_configured_limits_reach_collector_and_input_reserve(self):
+        files = {str(i): patch_text(str(i), body="+" + "x" * 700 + "\n") for i in range(4)}
+        with patch.dict(os.environ, {"AI_REVIEW_MAX_BATCHES": "2", "AI_REVIEW_MAX_FILES": "3",
+                                    "AI_REVIEW_BATCH_BYTES": "2000", "AI_REVIEW_INPUT_BYTES": "11000"}), \
+                patch.object(changes, "_resolve_changes", return_value=("a" * 40, "b" * 40, [], list(files))), \
+                patch.object(changes, "_read_diff", side_effect=lambda before, after, path: files[path].encode()):
+            batches, notes, _ = changes.collect_batches()
+        self.assertEqual(len(batches), 2)
+        self.assertTrue(all(len(diff.encode()) <= 1000 for diff, _ in batches))
+        self.assertIn("2 批、3 文件，每批 1000 字节", notes[0])
+        self.assertTrue(any("覆盖不完整" in note for note in notes))
 
     def test_real_range_resolution_and_file_read_limit(self):
         before, after = "a" * 40, "b" * 40

@@ -6,13 +6,15 @@ import subprocess
 import tempfile
 from pathlib import PurePosixPath
 
+from settings import limit_value
+
 MAX_BYTES = 100_000
 MAX_FILES = 60
-MAX_BATCH_BYTES = 24_000
+MAX_BATCH_BYTES = 100_000
 MAX_BATCHES = 20
 MAX_BATCH_FILES = 300
 MAX_FILE_BYTES = 2_000_000
-MAX_TOTAL_BYTES = 480_000
+MAX_TOTAL_BYTES = 20_000_000  # 全局资源硬上限；默认实际预算为20*100000字节
 
 _HUNK = re.compile(r"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@([^\n]*)(?:\n)?$")
 
@@ -173,14 +175,23 @@ def split_file_diff(path: str, text: str, budget: int) -> tuple[list[str], list[
 
 def collect_batches() -> tuple[list[tuple[str, list[str]]], list[str], str]:
     """Bounded review patches and their Git-derived file membership."""
+    max_batches = limit_value("AI_REVIEW_MAX_BATCHES", MAX_BATCHES)
+    max_files = limit_value("AI_REVIEW_MAX_FILES", MAX_BATCH_FILES)
+    batch_bytes = limit_value("AI_REVIEW_BATCH_BYTES", MAX_BATCH_BYTES)
+    # 差异不能占满输入，至少留4KB给提示/协议、6KB给规范；更大规范仍动态裁整文件。
+    input_bytes = limit_value("AI_REVIEW_INPUT_BYTES")
+    batch_bytes = min(batch_bytes, max(1000, input_bytes - 10_000))
+    # 总差异预算随批次数和单批大小增长，避免旧480KB上限让调大批次数无效。
+    total_bytes = min(MAX_TOTAL_BYTES, max_batches * batch_bytes)
     before, after, notes, paths = _resolve_changes()
+    notes.append(f"分批配置：最多 {max_batches} 批、{max_files} 文件，每批 {batch_bytes} 字节，总差异 {total_bytes} 字节。")
     batches: list[tuple[str, list[str]]] = []
     current = ""
     members: list[str] = []
     total = 0
     excluded = failed = limited = 0
     for index, path in enumerate(paths):
-        if index >= MAX_BATCH_FILES:
+        if index >= max_files:
             limited += 1
             continue
         if sensitive(path):
@@ -201,18 +212,18 @@ def collect_batches() -> tuple[list[tuple[str, list[str]]], list[str], str]:
             excluded += 1
             notes.append(f"覆盖不完整：{path} 的差异不是有效 UTF-8，已跳过而非替换源码字符。")
             continue
-        pieces, split_notes = split_file_diff(path, text, MAX_BATCH_BYTES)
+        pieces, split_notes = split_file_diff(path, text, batch_bytes)
         notes.extend(split_notes)
         for piece in pieces:
             # Git patches end in a newline; only add a separator if needed.
             separator = "\n" if current and not current.endswith("\n") else ""
             size = len((separator + piece).encode("utf-8"))
-            if len(current.encode("utf-8")) + size > MAX_BATCH_BYTES:
+            if len(current.encode("utf-8")) + size > batch_bytes:
                 batches.append((current, members))
                 current, members = "", []
                 separator = ""
                 size = len(piece.encode("utf-8"))
-            if len(batches) >= MAX_BATCHES or total + size > MAX_TOTAL_BYTES:
+            if len(batches) >= max_batches or total + size > total_bytes:
                 limited += 1
                 continue
             current += separator + piece
@@ -224,7 +235,7 @@ def collect_batches() -> tuple[list[tuple[str, list[str]]], list[str], str]:
     if excluded:
         notes.append(f"覆盖不完整：排除敏感路径、二进制或生成物共 {excluded} 个文件；不能据此判断整个提交安全。")
     if limited:
-        notes.append(f"覆盖不完整：文件数/批次数/总差异限制（{MAX_BATCH_FILES} 文件、{MAX_BATCHES} 批、{MAX_TOTAL_BYTES} 字节）导致 {limited} 个文件或片段跳过。")
+        notes.append(f"覆盖不完整：文件数/批次数/总差异限制（{max_files} 文件、{max_batches} 批、{total_bytes} 字节）导致 {limited} 个文件或片段跳过。")
     if failed:
         notes.append(f"覆盖不完整：{failed} 个文件读取失败；其他已收集差异保留。")
     return batches, notes, after

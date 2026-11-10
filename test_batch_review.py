@@ -60,7 +60,7 @@ class BatchReviewTests(unittest.TestCase):
 
     def test_budget_rejects_oversized_request(self):
         with patch.object(batch_review, "review_data") as review:
-            _, notes, _, _ = batch_review.review_batches([("x" * 50000, [])], "a" * 40)
+            _, notes, _, _ = batch_review.review_batches([("x" * 200000, [])], "a" * 40)
         review.assert_not_called()
         self.assertTrue(any("超过输入预算" in note for note in notes))
 

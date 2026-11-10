@@ -11,7 +11,30 @@ OPTIONS = {
     "openai_base_url": "AI_REVIEW_OPENAI_BASE_URL",
     "claude_model": "AI_REVIEW_CLAUDE_MODEL",
     "claude_base_url": "AI_REVIEW_CLAUDE_BASE_URL",
+    "max_batches": "AI_REVIEW_MAX_BATCHES",
+    "max_files": "AI_REVIEW_MAX_FILES",
+    "batch_bytes": "AI_REVIEW_BATCH_BYTES",
+    "input_bytes": "AI_REVIEW_INPUT_BYTES",
 }
+
+LIMITS = {
+    "AI_REVIEW_MAX_BATCHES": (20, 1, 200),
+    "AI_REVIEW_MAX_FILES": (300, 1, 5000),
+    "AI_REVIEW_BATCH_BYTES": (100000, 1000, 1000000),
+    "AI_REVIEW_INPUT_BYTES": (160000, 10000, 2000000),
+}
+
+
+def limit_value(name: str, default: int | None = None) -> int:
+    """正整数配置限制；批大小保留输入及规范预算，不允许无限放大。"""
+    fallback, minimum, maximum = LIMITS[name]
+    raw = os.getenv(name, "").strip() or str(fallback if default is None else default)
+    if not raw.isascii() or not raw.isdecimal() or len(raw) > 6:
+        raise ValueError("分批限制必须为正整数")
+    value = int(raw)
+    if not minimum <= value <= maximum:
+        raise ValueError("分批限制超出允许范围")
+    return value
 
 
 def load_settings() -> None:
@@ -26,6 +49,8 @@ def load_settings() -> None:
         raise ValueError("扩展配置包含未知字段")
     updates = {}
     for key, value in values.items():
+        if OPTIONS[key] in LIMITS and type(value) is int:
+            value = str(value)
         if key == "block_on_risk" and type(value) is bool:
             value = str(value).lower()
         if not isinstance(value, str) or len(value) > 2000 or any(ord(c) < 32 for c in value):
@@ -38,6 +63,8 @@ def policy() -> int:
     """最后单独执行，避免模型步骤的容错吞掉已启用的风险阻断。"""
     try:
         load_settings()
+        for name in LIMITS:
+            limit_value(name)
         block = os.getenv("AI_REVIEW_BLOCK_ON_RISK", "").strip() or "false"
         if block not in {"true", "false"}:
             raise ValueError("阻断开关无效")

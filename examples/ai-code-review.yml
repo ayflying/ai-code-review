@@ -8,7 +8,11 @@ env:
   AI_REVIEW_DINGTALK_KEYWORD: ${{ vars.AI_REVIEW_DINGTALK_KEYWORD || 'gitea' }}  # 机器人安全关键词
   AI_REVIEW_TOOL_REF: ${{ vars.AI_REVIEW_TOOL_REF || 'main' }}  # 默认自动更新；可在后台改为不可变标签回退/锁定
   AI_REVIEW_TOOL_SHA: ${{ vars.AI_REVIEW_TOOL_SHA }}  # 可选：固定完整 SHA 校验；自动更新时留空
-  AI_REVIEW_OPTIONS_JSON: ${{ vars.AI_REVIEW_OPTIONS_JSON }}  # 可选：非密钥扩展配置 JSON，未来参数由工具端解释
+  AI_REVIEW_MAX_BATCHES: ${{ vars.AI_REVIEW_MAX_BATCHES || '20' }}  # 最多审查批数，允许1–200；调大会增加调用费用和时间
+  AI_REVIEW_MAX_FILES: ${{ vars.AI_REVIEW_MAX_FILES || '300' }}  # 最多考虑文件数，允许1–5000
+  AI_REVIEW_BATCH_BYTES: ${{ vars.AI_REVIEW_BATCH_BYTES || '100000' }}  # 单批差异字节数，默认100KB；允许1000–1000000
+  AI_REVIEW_INPUT_BYTES: ${{ vars.AI_REVIEW_INPUT_BYTES || '160000' }}  # 单次输入总字节预算（含规范/提示），默认160KB；不是token数，按模型额度调整，允许10000–2000000
+  AI_REVIEW_OPTIONS_JSON: ${{ vars.AI_REVIEW_OPTIONS_JSON }}  # 可选：非密钥扩展配置 JSON，显式值覆盖上述单项配置
 # 密钥名称、run.py 入口、has_risk 输出和最后策略步骤是稳定接口，不要随意删除。
 
 on:
