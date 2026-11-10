@@ -16,13 +16,16 @@ def summarize(report: str) -> str:
     counts = {"明确问题": 0, "改进建议": 0, "待确认事项": 0}
     points = []
     section = ""
+    severity = ""
+    levels = {"high": "🔴 严重问题", "medium": "🟠 中等问题", "low": "🟡 轻微问题"}
     for line in lines:
         if line.startswith("## "):
             section = line[3:]
         elif section == "明确问题" and re.match(r"### (high|medium|low) \|", line):
             counts[section] += 1
+            severity = line.split()[1]
         elif section == "明确问题" and line.startswith("影响：") and len(points) < 2:
-            points.append(f"- {short_text(line[3:], 100)}")
+            points.append(f"**{levels.get(severity, '明确问题')}**：{short_text(line[3:], 100)}")
         elif section in {"改进建议", "待确认事项"} and line and line != "无。":
             counts[section] += 1
     result = [" / ".join(f"{name} {number} 项" for name, number in counts.items())]
@@ -38,7 +41,7 @@ def summarize(report: str) -> str:
                 if line.startswith("## "):
                     break
                 if line and line != "无。":
-                    points.append(f"- {short_text(line, 140)}")
+                    points.append(f"{'💡 改进建议' if heading == '改进建议' else '❓ 待确认'}：{short_text(line, 140)}")
                     break
             if points:
                 result.extend(points)
