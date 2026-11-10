@@ -45,6 +45,23 @@ class NotifyTests(unittest.TestCase):
             self.assertIn("截断", text)
             self.assertLess(len(text.encode()), 18000)
 
+    def test_custom_keyword(self):
+        with patch.dict(os.environ, {"AI_REVIEW_DINGTALK_WEBHOOK": WEBHOOK,
+                                    "AI_REVIEW_DINGTALK_KEYWORD": "代码告警"}), \
+                patch.object(notify, "request_json", return_value={"errcode": 0}) as request:
+            notify.notify_risk("报告", True)
+            payload = request.call_args.args[2]["markdown"]
+            self.assertIn("代码告警", payload["title"])
+            self.assertIn("代码告警", payload["text"])
+
+    def test_invalid_keyword_does_not_send(self):
+        for keyword in ("", "\n", "字" * 201):
+            with patch.dict(os.environ, {"AI_REVIEW_DINGTALK_WEBHOOK": WEBHOOK,
+                                        "AI_REVIEW_DINGTALK_KEYWORD": keyword}), \
+                    patch.object(notify, "request_json") as request:
+                self.assertIn("无效", notify.notify_risk("报告", True))
+                request.assert_not_called()
+
     def test_robot_rejection_not_success(self):
         with patch.dict(os.environ, {"AI_REVIEW_DINGTALK_WEBHOOK": WEBHOOK}), \
                 patch.object(notify, "request_json", return_value={"errcode": 310000, "errmsg": "sensitive"}):

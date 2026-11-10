@@ -48,6 +48,14 @@ def main() -> int:
         (directory / "ai-code-review-report.md").write_text(safe + "\n", encoding="utf-8")
     except OSError:
         print("报告文件写入失败，请以上方日志为准。")
+    # 独立输出供工作流最后的策略步骤判断，AI/通知失败仍不标记风险。
+    output = os.getenv("GITHUB_OUTPUT", "")
+    if output:
+        try:
+            with open(output, "a", encoding="utf-8") as stream:
+                stream.write(f"has_risk={'true' if has_risk else 'false'}\n")
+        except OSError:
+            print("风险状态输出失败，不执行风险阻断。")
     return 0
 
 

@@ -22,7 +22,11 @@ def notify_risk(report: str, has_risk: bool) -> str:
         repository = os.getenv("AI_REVIEW_REPOSITORY", "未知仓库")
         sha = os.getenv("AI_REVIEW_AFTER", "未知提交")
         run_url = os.getenv("AI_REVIEW_RUN_URL", "")
-        text = f"## gitea 代码风险报告\n\n仓库：{repository}\n\n提交：{sha}\n\n"
+        keyword = os.getenv("AI_REVIEW_DINGTALK_KEYWORD", "gitea").strip()
+        if not keyword or len(keyword.encode("utf-8")) > 200 or any(ord(c) < 32 for c in keyword):
+            return "钉钉关键词无效，未发送通知。"
+        title = f"{keyword} 代码风险报告"
+        text = f"## {title}\n\n仓库：{repository}\n\n提交：{sha}\n\n"
         if run_url:
             text += f"完整报告：{run_url}\n\n"
         # 钉钉 Markdown 消息限制按 UTF-8 字节计算，预留 JSON/标题余量。
@@ -32,7 +36,7 @@ def notify_risk(report: str, has_risk: bool) -> str:
         if len(raw) > remaining:
             text += "\n\n报告过长已截断，请查看 CI 完整日志。"
         response = request_json(webhook, {}, {
-            "msgtype": "markdown", "markdown": {"title": "gitea 代码风险报告", "text": text},
+            "msgtype": "markdown", "markdown": {"title": title, "text": text},
         })
         if type(response.get("errcode")) is not int or response["errcode"] != 0:
             return "钉钉拒绝通知，请检查机器人关键字或安全配置（不回显响应）。"
