@@ -17,6 +17,16 @@ class ArtifactTests(unittest.TestCase):
             self.assertLess(html.index("明确问题"), html.index("<details>"))
             self.assertIn("覆盖不完整", (target / "report.md").read_text(encoding="utf-8"))
 
+    def test_report_headings_fields_and_severity_are_html_not_raw_markdown(self):
+        from report_artifact import render_report
+        html = render_report("## 明确问题\n### medium | 代码风险 | src/main.cs:12\n影响：失败 <重试>\n修复建议：补充校验")
+        self.assertIn("<h2>明确问题</h2>", html)
+        self.assertIn('<h3 class="medium">中等问题', html)
+        self.assertIn('<strong>影响</strong>', html)
+        self.assertIn("&lt;重试&gt;", html)
+        self.assertNotIn("###", html)
+        self.assertNotIn("## 明确问题", html)
+
     def test_runtime_response_resolves_html_preview_not_download(self):
         import io
         import json
