@@ -68,6 +68,10 @@ def _resolve_changes() -> tuple[str, str, list[str], list[str]]:
 
 
 def _read_diff(before: str, after: str, path: str) -> bytes:
+    # 产品范围：不审查本工具的接入文件，避免把内部协议反复变成业务待确认项。
+    # 精确匹配专用入口，不排除其他业务CI或任意包含AI_REVIEW字样的代码。
+    if path in {".gitea/workflows/ai-code-review.yml", ".gitea/workflows/ai-code-review.yaml"}:
+        return b""
     return git("--literal-pathspecs", "diff", "--no-ext-diff", "--no-textconv",
                "--no-renames", "--unified=8", before, after, "--", path,
                limit=MAX_FILE_BYTES)

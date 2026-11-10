@@ -94,6 +94,13 @@ class ReviewTests(unittest.TestCase):
                 changes.collect()
             self.assertEqual(git.call_count, 2)
 
+    def test_reviewer_workflow_excluded_but_business_ci_retained(self):
+        with patch.object(changes, "git", return_value=b"business diff") as command:
+            self.assertEqual(changes._read_diff("a", "b", ".gitea/workflows/ai-code-review.yml"), b"")
+            command.assert_not_called()
+            self.assertEqual(changes._read_diff("a", "b", ".gitea/workflows/deploy.yml"), b"business diff")
+            command.assert_called_once()
+
     def test_sensitive_paths(self):
         for path in (".env", "config/.env.production", "keys/client.pem", "secrets/key.txt"):
             self.assertTrue(changes.sensitive(path))
