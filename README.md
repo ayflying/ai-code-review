@@ -12,7 +12,7 @@
 
 如果 `.gitea/workflows` 目录不存在，先创建。源文件请使用本仓库 main 分支的版本。
 
-只需复制这一份文件，不用复制 Python 脚本。工作流会自动拉取固定版本的审查器，在业务仓库中执行。
+只需复制一次，不用复制 Python 脚本。每次 CI 自动拉取本工具仓库 main 的最新代码，在业务仓库中执行；后续升级不需要修改业务工作流。旧版固定标签的工作流需要最后替换一次。
 
 ## 2. 配置密钥和模型
 
@@ -38,22 +38,23 @@
 
 密钥、Webhook 和 Git 令牌只能放 Secrets，不能写进代码、文档或普通变量。runner 需预装 Python 3.10+、Bash、Git，并能访问工具仓库和模型服务；不需要安装业务依赖。
 
-## 3. 修改工作流顶部配置
+## 3. 可选配置（后台修改，不用改工作流）
 
-```yaml
-env:
-  AI_REVIEW_BLOCK_ON_RISK: 'false'  # true：代码风险/明确违反规范时失败；建议和待确认不阻断
-  # 不指定其他机器人时保留默认 Secret 引用，使用环境已配置的机器人。
-  # 更换机器人只改 Secret 名称；禁止填写真实地址，清空值则不通知。
-  AI_REVIEW_DINGTALK_WEBHOOK: ${{ secrets.AI_REVIEW_DINGTALK_WEBHOOK }}
-  AI_REVIEW_DINGTALK_KEYWORD: 'gitea'  # 与所选机器人的安全关键词一致
-  AI_REVIEW_TOOL_REF: 'v1.2.0'  # 固定工具版本，升级时与 SHA 配套修改
-  AI_REVIEW_TOOL_SHA: '3c84bbbbac5c001d5415b843639d38f48ca1c8a0'  # 版本对应的完整提交 SHA
-```
+在业务仓库或组织的 Actions Variables 配置；不配置就使用默认值：
 
-- **只报告**：保持 `AI_REVIEW_BLOCK_ON_RISK: 'false'`。改成 `'true'` 后，明确代码风险或违反项目规范会让任务失败；纯建议、待确认、审查或通知失败不触发风险阻断。
-- **钉钉通知**：不填写其他机器人配置时，保留默认 Secret 引用即可使用环境中已配置的 `AI_REVIEW_DINGTALK_WEBHOOK`。要换机器人就引用另一个 Secret；清空值或 Secret 未配置则不通知。安全关键词默认 `gitea`，需与所选机器人一致；当前不支持加签机器人。
-- **工具版本**：标签与完整 SHA 必须配套，不要改成 main/latest。工具发布后，业务仓库需要手动升级这两个值。
+| 名称 | 默认值 | 说明 |
+| --- | --- | --- |
+| `AI_REVIEW_BLOCK_ON_RISK` | `false` | `true` 时明确代码风险/规范问题让 CI 失败；建议和待确认不阻断 |
+| `AI_REVIEW_DINGTALK_KEYWORD` | `gitea` | 与机器人的安全关键词一致 |
+| `AI_REVIEW_TOOL_REF` | `main` | 自动使用工具最新代码；需要回退/锁定时改为不可变发布标签 |
+| `AI_REVIEW_TOOL_SHA` | 空 | 可选的完整提交校验值；自动更新时留空，锁定标签时可配对应 SHA |
+| `AI_REVIEW_OPTIONS_JSON` | 空 | 非密钥扩展参数，后续新参数通过此入口传给工具 |
+
+机器人默认使用环境已配置的 `AI_REVIEW_DINGTALK_WEBHOOK` Secret；更换机器人就在后台更新该 Secret，未配置则不通知。禁止明文地址；当前不支持加签机器人。
+
+扩展配置示例：`{"block_on_risk":true,"dingtalk_keyword":"gitea"}`。目前支持 `block_on_risk`、`dingtalk_keyword`、`openai_model`、`openai_base_url`、`claude_model`、`claude_base_url`，显式值优先于单项变量；未知字段会报配置错误。不要放密钥。
+
+默认跟随 main 意味着工具更新会直接影响后续 CI，必须限制工具仓库写权限。日志记录实际运行 SHA；需要复现时先锁定发布标签。旧标签必须支持稳定入口 v1（含 `--policy`），例如 v1.2.0 及更早版本不支持该入口，不能直接回退到这些标签。
 
 ## 4. 推送并查看结果
 

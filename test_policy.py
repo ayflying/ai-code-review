@@ -29,8 +29,11 @@ class PolicyTests(unittest.TestCase):
 
     def test_workflow_applies_policy_after_report(self):
         workflow = (Path(__file__).parent / "examples/ai-code-review.yml").read_text(encoding="utf-8")
-        self.assertIn("AI_REVIEW_BLOCK_ON_RISK: 'false'", workflow)
-        self.assertIn('"$AI_REVIEW_BLOCK_ON_RISK" == \'true\' && "$HAS_RISK" == \'true\'', workflow)
+        self.assertIn("vars.AI_REVIEW_BLOCK_ON_RISK || 'false'", workflow)
+        self.assertIn('"$AI_REVIEW_TOOL_DIR/run.py" --policy', workflow)
+        self.assertIn("vars.AI_REVIEW_TOOL_REF || 'main'", workflow)
+        self.assertIn('if [[ -n "$AI_REVIEW_TOOL_SHA" ]]', workflow)
+        self.assertIn("vars.AI_REVIEW_OPTIONS_JSON", workflow)
         self.assertIn("steps.review.outputs.has_risk", workflow)
         self.assertNotIn("    continue-on-error: true\n    permissions:", workflow)
         self.assertLess(workflow.index("生成中文风险报告"), workflow.index("应用风险阻断策略"))

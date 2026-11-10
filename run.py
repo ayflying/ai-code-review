@@ -13,6 +13,7 @@ from changes import collect_changes  # noqa: E402
 from notify import notify_risk  # noqa: E402
 from providers import review_project  # noqa: E402
 from review_context import collect_context  # noqa: E402
+from settings import load_settings, policy  # noqa: E402
 
 
 def sanitize(text: str) -> str:
@@ -32,6 +33,7 @@ def main() -> int:
     has_risk = False
     should_notify = False
     try:
+        load_settings()
         diff, notes, after, paths = collect_changes()
         if diff:
             context, context_notes, documents = collect_context(after, paths)
@@ -64,4 +66,9 @@ def main() -> int:
 
 
 if __name__ == "__main__":
+    # 固定入口协议 v1：不带参数生成报告；--policy 单独执行最终策略。
+    if sys.argv[1:] == ["--policy"]:
+        raise SystemExit(policy())
+    if sys.argv[1:]:
+        raise SystemExit("不支持的审查入口参数")
     raise SystemExit(main())
