@@ -27,6 +27,14 @@ class ArtifactTests(unittest.TestCase):
         self.assertNotIn("###", html)
         self.assertNotIn("## 明确问题", html)
 
+    def test_report_supports_night_mode_without_scripts(self):
+        from report_artifact import STYLE
+        self.assertIn("color-scheme:light dark", STYLE)
+        self.assertIn("prefers-color-scheme:dark", STYLE)
+        for selector in ("body{color:#e2e8f0", "h3.high{color:#fda4af", "h3.medium{color:#fdba74",
+                         "h3.low{color:#fde68a", ".field strong{color:#cbd5e1", "details{color:#e2e8f0"):
+            self.assertIn(selector, STYLE)
+
     def test_runtime_response_resolves_html_preview_not_download(self):
         import io
         import json

@@ -6,6 +6,7 @@ from pathlib import Path
 
 
 STYLE = """
+:root{color-scheme:light dark}
 body{max-width:1050px;margin:32px auto;padding:0 24px;font:16px/1.8 system-ui;color:#243247;background:#fff}
 h1{font-size:28px;margin-bottom:24px}h2{font-size:22px;margin:32px 0 16px;border-bottom:1px solid #dce3ed;padding-bottom:8px}
 h3{font-size:17px;margin:24px 0 12px;padding:12px 16px;border-left:5px solid #64748b;background:#f1f5f9;border-radius:5px}
@@ -14,7 +15,18 @@ h3.low{border-color:#ca8a04;color:#854d0e;background:#fefce8}p{margin:10px 0;ove
 .field{display:grid;grid-template-columns:90px minmax(0,1fr);gap:12px;margin:12px 0}
 .field strong{color:#475569}code{background:#f1f5f9;padding:2px 5px;border-radius:4px}
 details{margin-top:36px;padding:16px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px}
-summary{cursor:pointer;font-weight:600}@media(max-width:600px){body{margin:16px auto;padding:0 14px}.field{display:block}.field strong{display:block}}
+summary{cursor:pointer;font-weight:600}
+/* 静态产物无父页面DOM权限，通过浏览器/嵌入页传递的配色偏好适配夜间模式。 */
+@media(prefers-color-scheme:dark){
+body{color:#e2e8f0;background:#171e2b}h2{border-color:#475569}
+h3{color:#e2e8f0;background:#273449;border-color:#94a3b8}
+h3.high{color:#fda4af;background:#471c28;border-color:#fb7185}
+h3.medium{color:#fdba74;background:#432c1b;border-color:#fb923c}
+h3.low{color:#fde68a;background:#3b331a;border-color:#facc15}
+.field strong{color:#cbd5e1}code{color:#e2e8f0;background:#273449}
+details{color:#e2e8f0;background:#202b3c;border-color:#475569}
+}
+@media(max-width:600px){body{margin:16px auto;padding:0 14px}.field{display:block}.field strong{display:block}}
 """
 
 
