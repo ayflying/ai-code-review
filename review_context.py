@@ -133,6 +133,11 @@ def collect_context(after: str, paths: list[str], max_bytes: int = MAX_TOTAL_BYT
         except (ValueError, OSError, subprocess.TimeoutExpired):
             notes.append(f"覆盖不完整：规范文档 {path} Git 对象读取失败，已跳过。")
             continue
+        # 文档可能包含部署凭据；宁可跳过整份，也不把已识别的秘密发到模型。
+        if re.search(r"(?im)(?:password|passwd|api[_ -]?key|access[_ -]?token|密码)"
+                     r"[\s*`\"']*[:=：][^\r\n]+|-----BEGIN [A-Z ]*PRIVATE KEY-----", text):
+            notes.append(f"覆盖不完整：规范文档 {path} 疑似包含明文凭据，整文件跳过（不回显内容）。")
+            continue
         lines = text.splitlines()
         document = (f"--- DOCUMENT: {path} ({len(lines)} lines) ---\n"
                     + "\n".join(f"{number}: {line}" for number, line in enumerate(lines, 1)))

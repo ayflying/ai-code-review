@@ -143,6 +143,15 @@ class ContextTests(unittest.TestCase):
         self.assertNotIn("README.md", counts)
         self.assertTrue(any("行号" in note for note in notes))
 
+    def test_plaintext_credentials_never_enter_context(self):
+        self.put("AGENTS.md", "**密码**：fake-sensitive-value\npassword=another-fake")
+        self.put("README.md", "正常说明")
+        after = self.commit()
+        text, notes, counts = collect_context(after, [])
+        self.assertNotIn("AGENTS.md", counts)
+        self.assertNotIn("fake-sensitive-value", text + "".join(notes))
+        self.assertTrue(any("明文凭据" in note for note in notes))
+
     def test_invalid_revision_rejected_before_git(self):
         for after in ("HEAD", "-bad", "f" * 39, "f" * 65, "g" * 40, "f" * 40 + "\n"):
             with self.subTest(after=after), patch.object(review_context, "git") as command:
