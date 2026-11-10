@@ -1,0 +1,70 @@
+name: AI Code Review
+on:
+  push:
+    branches: ['**']
+  workflow_dispatch:
+
+jobs:
+  review:
+    name: AI 代码风险报告（不拦截）
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    permissions:
+      contents: read
+    steps:
+      - name: 检查 OpenAI 密钥开关
+        id: config
+        shell: bash
+        env:
+          AI_REVIEW_OPENAI_API_KEY: ${{ secrets.AI_REVIEW_OPENAI_API_KEY }}
+        run: |
+          if [[ -n "${AI_REVIEW_OPENAI_API_KEY//[[:space:]]/}" ]]; then
+            echo 'enabled=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'enabled=false' >> "$GITHUB_OUTPUT"
+            echo '未配置 OpenAI 密钥，跳过 AI Code Review（不会调用 Claude）。'
+          fi
+
+      - name: 检出待审业务仓库
+        if: steps.config.outputs.enabled == 'true'
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      # 审查器放在 runner 临时目录，不覆盖业务仓库、不纳入审查 diff。
+      - name: 拉取独立审查器
+        if: steps.config.outputs.enabled == 'true'
+        shell: bash
+        env:
+          AI_REVIEW_TOOL_REF: v1.0.0
+        run: |
+          set -euo pipefail
+          tool_dir="$(mktemp -d "$RUNNER_TEMP/ai-code-review.XXXXXX")"
+          git clone --quiet --depth 1 --branch "$AI_REVIEW_TOOL_REF" \
+            https://gitea.adesk.com/actions/ai-code-review.git "$tool_dir"
+          echo "AI_REVIEW_TOOL_DIR=$tool_dir" >> "$GITHUB_ENV"
+          echo "审查器版本：$(git -C "$tool_dir" rev-parse HEAD)"
+
+      - name: 生成中文风险报告
+        if: steps.config.outputs.enabled == 'true'
+        continue-on-error: true
+        shell: bash
+        env:
+          AI_REVIEW_OPENAI_API_KEY: ${{ secrets.AI_REVIEW_OPENAI_API_KEY }}
+          AI_REVIEW_OPENAI_BASE_URL: ${{ vars.AI_REVIEW_OPENAI_BASE_URL }}
+          AI_REVIEW_OPENAI_MODEL: ${{ vars.AI_REVIEW_OPENAI_MODEL }}
+          AI_REVIEW_CLAUDE_API_KEY: ${{ secrets.AI_REVIEW_CLAUDE_API_KEY }}
+          AI_REVIEW_CLAUDE_BASE_URL: ${{ vars.AI_REVIEW_CLAUDE_BASE_URL }}
+          AI_REVIEW_CLAUDE_MODEL: ${{ vars.AI_REVIEW_CLAUDE_MODEL }}
+          AI_REVIEW_DINGTALK_WEBHOOK: ${{ secrets.AI_REVIEW_DINGTALK_WEBHOOK }}
+          AI_REVIEW_REPOSITORY: ${{ gitea.repository }}
+          AI_REVIEW_RUN_URL: ${{ gitea.server_url }}/${{ gitea.repository }}/actions/runs/${{ gitea.run_id }}
+          AI_REVIEW_BEFORE: ${{ gitea.event.before }}
+          AI_REVIEW_AFTER: ${{ gitea.sha }}
+        run: |
+          if command -v python3 >/dev/null 2>&1; then
+            python3 -I "$AI_REVIEW_TOOL_DIR/run.py"
+          else
+            echo '审查未完成：runner 未安装 Python 3（需要 3.10+），未调用 AI。'
+          fi
