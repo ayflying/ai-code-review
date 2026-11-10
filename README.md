@@ -4,7 +4,13 @@
 
 ## 1. 添加工作流
 
-从本仓库 **main 分支**复制 [工作流模板](examples/ai-code-review.yml)，放到业务仓库的 `.gitea/workflows/ai-code-review.yml`。
+把本仓库的 [examples/ai-code-review.yml](examples/ai-code-review.yml) 文件复制到需要审查的项目中，保存为：
+
+```text
+你的项目/.gitea/workflows/ai-code-review.yml
+```
+
+如果 `.gitea/workflows` 目录不存在，先创建。源文件请使用本仓库 main 分支的版本。
 
 只需复制这一份文件，不用复制 Python 脚本。工作流会自动拉取固定版本的审查器，在业务仓库中执行。
 
