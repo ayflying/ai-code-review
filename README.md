@@ -2,6 +2,12 @@
 
 通用 Gitea Actions 推送风险审查，不绑定项目和语言。默认只输出中文报告，可通过业务 CI 顶部配置发现风险时让任务失败。API 或通知错误仍不按代码风险阻断。需要阻止合并时，另在分支保护中将此工作流设为必需检查。基础设施故障、取消和 runner 不可用仍可能导致工作流异常，不能保证任何情况下均为绿色。
 
+## 文档导航
+
+- [后续开发接手指南](AGENTS.md)：模块职责、关键契约、验证与发布规则；新对话先读。
+- [项目交接与验证边界](docs/handoff.md)：当前版本、业务试点分支、真实验证证据及待验证事项。
+- [业务工作流模板](examples/ai-code-review.yml)：接入时从 main 复制此模板，只改顶部配置。
+
 ## 接入与配置
 
 独立工具仓库：https://gitea.adesk.com/actions/ai-code-review 。只包含通用工具和示例，没有业务代码或凭据。
@@ -25,7 +31,7 @@ runner 使用 `ubuntu-latest` 标签，需能下载 checkout 动作、克隆工�
 
 - `AI_REVIEW_OPENAI_API_KEY`：启动开关，缺失/空白时跳过全部审查，不检出代码、不调用 Claude。
 - `AI_REVIEW_CLAUDE_API_KEY`：可选备用密钥。
-- `AI_REVIEW_DINGTALK_WEBHOOK`：可选，钉钉自定义机器人的完整 Webhook 地址（包含 access_token），只能配置到 Secrets，不能写进仓库或普通变量。机器人安全关键字配置为 `gitea`。
+- `AI_REVIEW_DINGTALK_WEBHOOK`：可选，钉钉自定义机器人的完整 Webhook 地址（包含 access_token），只能配置到 Secrets，不能写进仓库或普通变量。机器人安全关键词须与 CI 顶部配置一致，默认 `gitea`。
 
 Actions Variables（可以用实例全局变量；密钥禁止放普通变量）：
 
