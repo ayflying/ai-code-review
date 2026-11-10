@@ -24,7 +24,8 @@ class PolicyTests(unittest.TestCase):
                     notify.assert_called_once()
                     review.assert_called_once_with([("diff", ["app.py"])], "a" * 40)
                     self.assertEqual(notify.call_args.args[1], should_notify)
-                    self.assertEqual(output.read_text().strip(), f"has_risk={str(risk).lower()}")
+                    self.assertEqual(output.read_text().splitlines(), [f"has_risk={str(risk).lower()}",
+                                                                     f"should_notify={str(should_notify).lower()}"])
 
     def test_workflow_applies_policy_after_report(self):
         workflow = (Path(__file__).parent / "examples/ai-code-review.yml").read_text(encoding="utf-8")

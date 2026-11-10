@@ -44,7 +44,7 @@ class NotifyTests(unittest.TestCase):
             self.assertIn("https://git.example/run/1", text)
             self.assertNotIn("截断", text)
             self.assertNotIn("风险" * 20, text)
-            self.assertIn("查看完整报告", text)
+            self.assertIn("下载详细报告", text)
             self.assertLess(len(text.encode()), 2000)
 
     def test_concise_summary_counts_and_skips_coverage_logs(self):

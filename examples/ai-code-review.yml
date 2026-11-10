@@ -79,6 +79,7 @@ jobs:
           AI_REVIEW_CLAUDE_API_KEY: ${{ secrets.AI_REVIEW_CLAUDE_API_KEY }}
           AI_REVIEW_CLAUDE_BASE_URL: ${{ vars.AI_REVIEW_CLAUDE_BASE_URL }}
           AI_REVIEW_CLAUDE_MODEL: ${{ vars.AI_REVIEW_CLAUDE_MODEL }}
+          AI_REVIEW_DEFER_NOTIFY: 'true'  # 报告上传成功后才发送产物链接
           AI_REVIEW_REPOSITORY: ${{ gitea.repository }}
           AI_REVIEW_RUN_URL: ${{ gitea.server_url }}/${{ gitea.repository }}/actions/runs/${{ gitea.run_id }}
           AI_REVIEW_BEFORE: ${{ gitea.event.before }}
@@ -91,6 +92,28 @@ jobs:
           else
             echo '审查未完成：runner 未安装 Python 3（需要 3.10+），未调用 AI。'
           fi
+
+      - name: 上传审查报告产物
+        id: artifact
+        if: steps.config.outputs.enabled == 'true'
+        continue-on-error: true
+        uses: actions/upload-artifact@v3
+        with:
+          name: ai-code-review-report-${{ gitea.run_attempt }}
+          path: ${{ runner.temp }}/ai-code-review-report/
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: 发送审查摘要与产物链接
+        if: steps.artifact.outcome == 'success' && steps.review.outputs.should_notify == 'true'
+        continue-on-error: true
+        shell: bash
+        env:
+          AI_REVIEW_REPOSITORY: ${{ gitea.repository }}
+          AI_REVIEW_AFTER: ${{ gitea.sha }}
+          AI_REVIEW_SHOULD_NOTIFY: ${{ steps.review.outputs.should_notify }}
+          AI_REVIEW_RUN_URL: ${{ gitea.server_url }}/${{ gitea.repository }}/actions/runs/${{ gitea.run_id }}/artifacts/ai-code-review-report-${{ gitea.run_attempt }}?attempt=${{ gitea.run_attempt }}
+        run: python3 -I "$AI_REVIEW_TOOL_DIR/run.py" --notify
 
       # 不使用 job 级 continue-on-error，否则启用阻断也会被吞掉。
       - name: 应用风险阻断策略

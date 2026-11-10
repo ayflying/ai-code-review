@@ -32,7 +32,7 @@ def notify_risk(report: str, should_notify: bool) -> str:
         if run_url:
             parsed_run = urlsplit(run_url)
             if parsed_run.scheme == "https" and parsed_run.netloc and not parsed_run.username:
-                text += f"\n\n[查看完整报告]({run_url.replace(')', '%29')})"
+                text += f"\n\n[下载详细报告（HTML / Markdown）]({run_url.replace(')', '%29')})"
         else:
             text += "\n\n详情请查看本次 CI 的审查日志。"
         response = request_json(webhook, {}, {

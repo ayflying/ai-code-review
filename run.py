@@ -12,6 +12,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from batch_review import review_batches  # noqa: E402
 from changes import collect_batches  # noqa: E402
 from notify import notify_risk  # noqa: E402
+from report_artifact import write_report  # noqa: E402
 from settings import load_settings, policy  # noqa: E402
 
 
@@ -31,6 +32,8 @@ def main() -> int:
         return 0
     has_risk = False
     should_notify = False
+    notes = []
+    report = "审查未完成，不能据此判断无风险。"
     try:
         load_settings()
         batches, notes, after = collect_batches()
@@ -45,10 +48,15 @@ def main() -> int:
     safe = sanitize(body)
     # 日志为所有 Gitea 版本的主要报告入口，不依赖 GitHub 专属制品协议。
     print(safe)
-    print(notify_risk(safe, should_notify))
+    if os.getenv("AI_REVIEW_DEFER_NOTIFY") != "true":
+        print(notify_risk(safe, should_notify))
     directory = Path(os.getenv("RUNNER_TEMP") or tempfile.gettempdir())
     try:
         (directory / "ai-code-review-report.md").write_text(safe + "\n", encoding="utf-8")
+        # 产物不含“报告 |”日志前缀，先展示问题，覆盖说明折叠在后。
+        def clean(value: str) -> str:
+            return "\n".join(line.removeprefix("报告 | ") for line in sanitize(value).splitlines())
+        write_report(directory, clean(report), [clean(note) for note in notes])
     except OSError:
         print("报告文件写入失败，请以上方日志为准。")
     # 独立输出供工作流最后的策略步骤判断，AI/通知失败仍不标记风险。
@@ -57,6 +65,7 @@ def main() -> int:
         try:
             with open(output, "a", encoding="utf-8") as stream:
                 stream.write(f"has_risk={'true' if has_risk else 'false'}\n")
+                stream.write(f"should_notify={'true' if should_notify else 'false'}\n")
         except OSError:
             print("风险状态输出失败，不执行风险阻断。")
     return 0
@@ -66,6 +75,14 @@ if __name__ == "__main__":
     # 固定入口协议 v1：不带参数生成报告；--policy 单独执行最终策略。
     if sys.argv[1:] == ["--policy"]:
         raise SystemExit(policy())
+    if sys.argv[1:] == ["--notify"]:
+        directory = Path(os.getenv("RUNNER_TEMP") or tempfile.gettempdir())
+        try:
+            report = (directory / "ai-code-review-report.md").read_text(encoding="utf-8")
+            print(notify_risk(report, os.getenv("AI_REVIEW_SHOULD_NOTIFY") == "true"))
+        except OSError:
+            print("报告读取失败，未发送通知。")
+        raise SystemExit(0)
     if sys.argv[1:]:
         raise SystemExit("不支持的审查入口参数")
     raise SystemExit(main())
