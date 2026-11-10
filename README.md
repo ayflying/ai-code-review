@@ -6,9 +6,9 @@
 
 独立工具仓库：https://gitea.adesk.com/actions/ai-code-review 。只包含通用工具和示例，没有业务代码或凭据。
 
-将 `examples/ai-code-review.yml` 复制到业务仓库的 `.gitea/workflows/ai-code-review.yml`，不再复制 Python 脚本。工作流检出业务仓库后，把工具拉到 runner 临时目录，从业务仓库工作目录执行工具绝对路径，因此 Git diff 始终针对业务仓库而不是工具仓库。工具以 `v1.0.0` 版本拉取，正式接入建议同时校验预期完整提交 SHA，升级时显式更新，不追随 main/latest。
+将 `examples/ai-code-review.yml` 复制到业务仓库的 `.gitea/workflows/ai-code-review.yml`，不再复制 Python 脚本。工作流检出业务仓库后，把工具拉到 runner 临时目录，从业务仓库工作目录执行工具绝对路径，因此 Git diff 始终针对业务仓库而不是工具仓库。工具以 `v1.0.0` 版本拉取，示例同时校验完整提交 SHA `52fb650916da7638bb2fa7219d5d5df84fcf4f84`，升级时显式更新标签与SHA，不追随 main/latest。
 
-工具仓库不存业务代码和密钥，可供 runner 无认证克隆；若将工具改为私有仓库，需单独配置最小只读凭据，业务仓库自动任务令牌未必具有跨仓库权限，不要把 AI Key 当作 Git 凭据。
+工具仓库不存业务代码和密钥，但 actions 组织当前为受限可见，匿名克隆会被拒绝。示例通过临时 askpass 注入认证：优先使用业务仓库/组织的 `AI_REVIEW_TOOL_READ_TOKEN` Secret，否则尝试任务自带 `gitea.token`。若任务令牌不具备跨仓库读取权限，必须配置专用最小只读令牌（具备 actions/ai-code-review 仓库读取权限）。凭据不嵌入URL、不保存Git配置；不要把AI Key当作Git凭据，也不要为方便克隆扩大组织可见性。
 
 runner 使用 `ubuntu-latest` 标签，需能下载 checkout 动作、克隆工具及访问模型服务，并预装 Python 3.10+（python3）；只使用标准库，不下载 Python/pip，不安装或运行项目依赖。Secrets/Variables 配置在被审查的业务仓库或其所属组织，不是仅配置在 actions 工具组织；组织间不会自动共享密钥。
 

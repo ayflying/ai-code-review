@@ -38,11 +38,18 @@ jobs:
         shell: bash
         env:
           AI_REVIEW_TOOL_REF: v1.0.0
+          AI_REVIEW_TOOL_TOKEN: ${{ secrets.AI_REVIEW_TOOL_READ_TOKEN || gitea.token }}
         run: |
           set -euo pipefail
           tool_dir="$(mktemp -d "$RUNNER_TEMP/ai-code-review.XXXXXX")"
-          git clone --quiet --depth 1 --branch "$AI_REVIEW_TOOL_REF" \
+          # 凭据仅通过临时 askpass 注入，不嵌入 URL 或写入 Git 配置。
+          askpass="$(mktemp "$RUNNER_TEMP/ai-review-askpass.XXXXXX")"
+          trap 'rm -f "$askpass"' EXIT
+          printf '%s\n' '#!/bin/sh' 'case "$1" in *Username*) echo x-access-token;; *) printf "%s\\n" "$AI_REVIEW_TOOL_TOKEN";; esac' > "$askpass"
+          chmod 700 "$askpass"
+          GIT_ASKPASS="$askpass" GIT_TERMINAL_PROMPT=0 git clone --quiet --depth 1 --branch "$AI_REVIEW_TOOL_REF" \
             https://gitea.adesk.com/actions/ai-code-review.git "$tool_dir"
+          test "$(git -C "$tool_dir" rev-parse HEAD)" = '52fb650916da7638bb2fa7219d5d5df84fcf4f84'
           echo "AI_REVIEW_TOOL_DIR=$tool_dir" >> "$GITHUB_ENV"
           echo "审查器版本：$(git -C "$tool_dir" rev-parse HEAD)"
 
