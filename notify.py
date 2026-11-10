@@ -4,6 +4,7 @@ import os
 from urllib.parse import parse_qs, urlsplit
 
 from providers import ReviewError, request_json
+from notification_summary import short_text, summarize
 
 
 def notify_risk(report: str, should_notify: bool) -> str:
@@ -26,15 +27,14 @@ def notify_risk(report: str, should_notify: bool) -> str:
         if not keyword or len(keyword.encode("utf-8")) > 200 or any(ord(c) < 32 for c in keyword):
             return "钉钉关键词无效，未发送通知。"
         title = f"{keyword} 代码审查报告"
-        text = f"## {title}\n\n仓库：{repository}\n\n提交：{sha}\n\n"
+        text = (f"## {title}\n\n{short_text(repository, 100)} · {short_text(sha, 8)}\n\n"
+                + summarize(report))
         if run_url:
-            text += f"完整报告：{run_url}\n\n"
-        # 钉钉 Markdown 消息限制按 UTF-8 字节计算，预留 JSON/标题余量。
-        remaining = max(0, 16000 - len(text.encode("utf-8")))
-        raw = report.encode("utf-8")
-        text += raw[:remaining].decode("utf-8", errors="ignore")
-        if len(raw) > remaining:
-            text += "\n\n报告过长已截断，请查看 CI 完整日志。"
+            parsed_run = urlsplit(run_url)
+            if parsed_run.scheme == "https" and parsed_run.netloc and not parsed_run.username:
+                text += f"\n\n[查看完整报告]({run_url.replace(')', '%29')})"
+        else:
+            text += "\n\n详情请查看本次 CI 的审查日志。"
         response = request_json(webhook, {}, {
             "msgtype": "markdown", "markdown": {"title": title, "text": text},
         })

@@ -42,8 +42,20 @@ class NotifyTests(unittest.TestCase):
             self.assertIn("gitea", text)
             self.assertIn("owner/repo", text)
             self.assertIn("https://git.example/run/1", text)
-            self.assertIn("截断", text)
-            self.assertLess(len(text.encode()), 18000)
+            self.assertNotIn("截断", text)
+            self.assertNotIn("风险" * 20, text)
+            self.assertIn("查看完整报告", text)
+            self.assertLess(len(text.encode()), 2000)
+
+    def test_concise_summary_counts_and_skips_coverage_logs(self):
+        from notification_summary import summarize
+        report = "覆盖不完整：缺少README\n" + parse_report(result([FINDING]))[0]
+        text = summarize(report)
+        self.assertIn("明确问题 1 项", text)
+        self.assertIn("改进建议 0 项", text)
+        self.assertIn("src/example.py:12：越权", text)
+        self.assertNotIn("缺少README", text)
+        self.assertNotIn("触发条件", text)
 
     def test_custom_keyword(self):
         with patch.dict(os.environ, {"AI_REVIEW_DINGTALK_WEBHOOK": WEBHOOK,
