@@ -1,74 +1,77 @@
 # AI Code Review
 
-通用 Gitea Actions 推送风险审查，不绑定项目和语言。默认只输出中文报告，可通过业务 CI 顶部配置发现风险时让任务失败。API 或通知错误仍不按代码风险阻断。需要阻止合并时，另在分支保护中将此工作流设为必需检查。基础设施故障、取消和 runner 不可用仍可能导致工作流异常，不能保证任何情况下均为绿色。
+给 Gitea 仓库接入 AI 代码审查：推送后自动检查代码变更、输出中文报告，发现明确风险时发送钉钉通知。默认不阻断 CI，可按仓库开启。
 
-## 文档导航
+## 1. 添加工作流
 
-- [后续开发接手指南](AGENTS.md)：模块职责、关键契约、验证与发布规则；新对话先读。
-- [项目交接与验证边界](docs/handoff.md)：当前版本、业务试点分支、真实验证证据及待验证事项。
-- [业务工作流模板](examples/ai-code-review.yml)：接入时从 main 复制此模板，只改顶部配置。
+从本仓库 **main 分支**复制 [工作流模板](examples/ai-code-review.yml)，放到业务仓库的 `.gitea/workflows/ai-code-review.yml`。
 
-## 接入与配置
+只需复制这一份文件，不用复制 Python 脚本。工作流会自动拉取固定版本的审查器，在业务仓库中执行。
 
-独立工具仓库：https://gitea.adesk.com/actions/ai-code-review 。只包含通用工具和示例，没有业务代码或凭据。
+## 2. 配置密钥和模型
 
-将 `examples/ai-code-review.yml` 复制到业务仓库的 `.gitea/workflows/ai-code-review.yml`，不再复制 Python 脚本。工作流检出业务仓库后，把工具拉到 runner 临时目录，从业务仓库工作目录执行工具绝对路径，因此 Git diff 始终针对业务仓库而不是工具仓库。工具以 `v1.1.0` 版本拉取，示例顶部同时配置并校验完整提交 SHA，升级时显式更新标签与 SHA，不追随 main/latest。
+在**业务仓库或其所属组织**的 Actions 设置中配置以下内容；只配置到工具仓库不会生效。
 
-工具仓库不存业务代码和密钥，但 actions 组织当前为受限可见，匿名克隆会被拒绝。示例通过临时 askpass 注入认证：优先使用业务仓库/组织的 `AI_REVIEW_TOOL_READ_TOKEN` Secret，否则尝试任务自带 `gitea.token`。若任务令牌不具备跨仓库读取权限，必须配置专用最小只读令牌（具备 actions/ai-code-review 仓库读取权限）。凭据不嵌入URL、不保存Git配置；不要把AI Key当作Git凭据，也不要为方便克隆扩大组织可见性。
+**Secrets（密钥）**
 
-runner 使用 `ubuntu-latest` 标签，需能下载 checkout 动作、克隆工具及访问模型服务，并预装 Python 3.10+（python3）；只使用标准库，不下载 Python/pip，不安装或运行项目依赖。Secrets/Variables 配置在被审查的业务仓库或其所属组织，不是仅配置在 actions 工具组织；组织间不会自动共享密钥。
+| 名称 | 是否必填 | 用途 |
+| --- | --- | --- |
+| `AI_REVIEW_OPENAI_API_KEY` | 必填 | 主模型密钥；为空时跳过全部审查和通知 |
+| `AI_REVIEW_TOOL_READ_TOKEN` | 按需 | 读取本工具仓库的最小只读令牌；任务自带令牌能跨库读取时可不配 |
+| `AI_REVIEW_CLAUDE_API_KEY` | 可选 | 主模型失败后使用的备用密钥 |
+| `AI_REVIEW_DINGTALK_WEBHOOK` | 可选 | 钉钉机器人的完整 Webhook 地址 |
 
-### CI 顶部可调参数
+**Variables（普通变量）**
 
-- `AI_REVIEW_BLOCK_ON_RISK: 'false'`：只报告；改为 `'true'` 时任何明确风险（high/medium/low）都会在报告和通知完成后使任务失败。仅待验证事项或审查失败不触发风险阻断。不回滚已推送代码；阻止合并需配置分支保护。
-- `AI_REVIEW_DINGTALK_WEBHOOK: ${{ secrets.AI_REVIEW_DINGTALK_WEBHOOK }}`：可在顶部改成另一个 Secret 名称以选择机器人；不要把含 access_token 的真实地址明文提交。空值表示不发送通知。
-- `AI_REVIEW_DINGTALK_KEYWORD: 'gitea'`：可换成对应机器人的安全关键词，消息标题和正文都会带上；需为非空单行，最多 200 UTF-8 字节。
-- `AI_REVIEW_TOOL_REF` / `AI_REVIEW_TOOL_SHA`：审查器标签与完整 SHA 配套修改。
+| 名称 | 是否必填 | 用途 |
+| --- | --- | --- |
+| `AI_REVIEW_OPENAI_MODEL` | 必填 | 账号可用的准确模型 ID |
+| `AI_REVIEW_OPENAI_BASE_URL` | 可选 | 默认 `https://api.openai.com/v1`，不要加 `/responses` |
+| `AI_REVIEW_CLAUDE_MODEL` | 使用备用时必填 | 备用模型 ID |
+| `AI_REVIEW_CLAUDE_BASE_URL` | 可选 | 默认 `https://api.anthropic.com/v1`，不要加 `/messages` |
 
-以上参数由各业务仓库自行决定，无需改工具源码。风险策略独立在最后一步执行，不用 job 级 continue-on-error 吞掉阻断结果；模型和通知步骤仍为可容错。
+密钥、Webhook 和 Git 令牌只能放 Secrets，不能写进代码、文档或普通变量。runner 需预装 Python 3.10+、Bash、Git，并能访问工具仓库和模型服务；不需要安装业务依赖。
 
-组织或仓库 Actions Secrets：
+## 3. 修改工作流顶部配置
 
-- `AI_REVIEW_OPENAI_API_KEY`：启动开关，缺失/空白时跳过全部审查，不检出代码、不调用 Claude。
-- `AI_REVIEW_CLAUDE_API_KEY`：可选备用密钥。
-- `AI_REVIEW_DINGTALK_WEBHOOK`：可选，钉钉自定义机器人的完整 Webhook 地址（包含 access_token），只能配置到 Secrets，不能写进仓库或普通变量。机器人安全关键词须与 CI 顶部配置一致，默认 `gitea`。
-
-Actions Variables（可以用实例全局变量；密钥禁止放普通变量）：
-
-- `AI_REVIEW_OPENAI_BASE_URL`：默认 `https://api.openai.com/v1`，不含 `/responses`。
-- `AI_REVIEW_OPENAI_MODEL`：必填，账号可用的准确模型 ID。
-- `AI_REVIEW_CLAUDE_BASE_URL`：默认 `https://api.anthropic.com/v1`，不含 `/messages`。
-- `AI_REVIEW_CLAUDE_MODEL`：备用模型 ID。
-
-OpenAI 使用 Responses API，禁止存储响应（store=false）；Claude 使用原生 Messages API。地址只允许 HTTPS，不跟随重定向。OpenAI 超时、HTTP错误、空文本、结构异常或不完整响应时切换 Claude。发现高风险不属于调用失败，不会触发重审。模型与服务端数据保留政策由实际供应商决定，store=false 不等于零保留。
-
-## 报告与覆盖范围
-
-在 Actions → AI Code Review → 生成中文风险报告步骤查看日志。另在 runner 临时目录写 `ai-code-review-report.md`，临时文件不保证持久保存，不依赖 GitHub 专属制品 API。
-
-普通 push 审查 before..after，包含多提交；手动运行和新分支只审 HEAD 相对第一父提交（根提交相对空树），报告明确标注范围。before 对象不可用时报告未完成，不偷换为上一提交。只监听分支 push，不监听 tag，不处理 PR。每文件带 8 行上下文，不自动读取相关文件，因此跨文件风险可能漏报。
-
-最多考虑 60 个文件、每文件 30KB、总 diff 100KB；二进制、环境文件、常见私钥、凭据目录、依赖目录、锁文件等不发给模型；超限/排除明确标记覆盖不完整。单文件 diff 超过 2MB 或路径清单超过上限时报告未完成。路径过滤不能保证业务源码中没有密码，代码可能包含敏感数据；启用前必须允许代码外发给主、备两家服务。不要把 AI 结论当作测试、安全扫描或人工审查的替代。
-
-## 钉钉风险通知
-
-模型必须返回 JSON 总结、风险 findings 和待验证事项，脚本校验后生成中文 Markdown。仅 findings 存在有效风险条目时发送；无风险、只有待验证事项、审查失败、缺 OpenAI 密钥均不通知。不用自然语言关键词猜测有无风险；结果格式异常触发备用服务。
-
-消息包含顶部配置的关键词（默认 `gitea`）、仓库、提交、CI 链接和报告；超长报告按 UTF-8 字节截断并引导查看完整日志。只允许 `https://oapi.dingtalk.com/robot/send` 地址，不跟随重定向；不发送原始 diff。机器人的关键字安全模式由群管理员配置，若另有加签要求需另行接入，当前不支持签名密钥。通知属于额外向群内分享代码风险信息，请确保群成员具备查看权限。
-
-钉钉 HTTP 成功不代表投递成功，必须检查 errcode=0；失败仅记录固定提示，不打印 Webhook、令牌和服务错误正文、不影响 CI。不自动重试以避免重复发送；手动重新运行 CI 可能重复通知。不发送虚构风险做线上测试；本地使用 mock 验证风险、无风险、拒绝和网络异常路径。
-
-## 信任边界
-
-本方案在当前 push 的工作流和审查脚本中使用 Secrets，要求所有有权推送并触发该工作流的人可信。它不执行业务代码，但不能阻止有写权限的人修改工作流来取走密钥；组织级密钥也有相同边界。需要对不可信提交隔离时，应使用独立受信 CI 控制面或外部 webhook 审查服务，而不是仅靠提示词或分支保护。建议独立审查密钥、额度上限、可信 HTTPS 网关、限制出网。
-
-模型输出作为不可信文本：不执行命令、不自动修复、不自动评论；输出加行前缀防 Actions 日志命令注入，隐藏当前配置的两把 API Key。其他源码敏感值无法保证自动识别。
-
-## 本地验证
-
-```text
-python -m unittest discover -s . -p "test_*.py" -v
-python -m ruff check .
+```yaml
+env:
+  AI_REVIEW_BLOCK_ON_RISK: 'false'
+  AI_REVIEW_DINGTALK_WEBHOOK: ${{ secrets.AI_REVIEW_DINGTALK_WEBHOOK }}
+  AI_REVIEW_DINGTALK_KEYWORD: 'gitea'
+  AI_REVIEW_TOOL_REF: 'v1.1.0'
+  AI_REVIEW_TOOL_SHA: '84d21423b4f28f882addbd533f67f36489a5c38b'
 ```
 
-单测不访问网络、无真实密钥；真实联通与备用接口测试需要在 Gitea 上实际运行，不能用 mock 成功替代。
+- **只报告**：保持 `AI_REVIEW_BLOCK_ON_RISK: 'false'`。改成 `'true'` 后，发现任何明确风险都会让任务失败；审查或通知失败不按代码风险阻断。
+- **钉钉通知**：机器人安全关键词需与 `AI_REVIEW_DINGTALK_KEYWORD` 一致，默认 `gitea`。当前不支持加签机器人。
+- **工具版本**：标签与完整 SHA 必须配套，不要改成 main/latest。工具发布后，业务仓库需要手动升级这两个值。
+
+## 4. 推送并查看结果
+
+提交工作流后推送分支，或在 Actions 中手动运行 **AI Code Review**。
+
+在 **生成中文风险报告** 步骤查看报告：
+
+- 主模型优先，调用失败或报告格式无效时才使用备用模型。
+- 有明确风险才发钉钉；无风险、只有待验证事项、审查失败都不发送。
+- 钉钉通知成功以机器人返回 `errcode=0` 为准，不能只看 HTTP 成功或 CI 绿色。
+- 不要通过引入漏洞或伪造风险测试通知；真实测试消息需明确授权并标注测试用途。
+
+需要阻止合并时，还要在分支保护中将此工作流设为必需检查；它不能撤销已发生的推送。
+
+## 能检查什么
+
+检查本次变更中的安全、权限、逻辑、数据、并发、兼容性和稳定性风险，**不是全仓库扫描，也不能替代测试和人工审查**。
+
+**当前不会自动读取项目说明、AGENTS 或其他规范文档。** 仅在仓库添加规范，不会让审查器自动按规范检查；文档上下文能力尚未接入。
+
+## 使用前注意
+
+- 代码会发送给主、备模型服务，启用前需确认允许外发；敏感文件过滤不保证源码没有密钥。
+- 只允许可信人员修改和触发带 Secrets 的工作流；固定工具版本不能隔离恶意工作流。
+- 只监听分支 push 和手动运行，不处理 PR 或 tag。手动运行、新分支只审最近一次提交。
+- 差异有大小限制，跨文件上下文有限；排除、超限或调用失败会标明覆盖不完整，不代表安全。
+- 不执行业务代码、不自动修复或合并。钉钉消息不含原始 diff，重跑可能重复通知。
+
+开发与发布规则见 [开发指南](AGENTS.md)，版本和真实验证状态见 [交接记录](docs/handoff.md)。
