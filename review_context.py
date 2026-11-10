@@ -59,7 +59,8 @@ def source_line(context: str, path: str, number: int) -> str:
     return ""
 
 
-def collect_context(after: str, paths: list[str]) -> tuple[str, list[str], dict[str, int]]:
+def collect_context(after: str, paths: list[str], max_bytes: int = MAX_TOTAL_BYTES
+                    ) -> tuple[str, list[str], dict[str, int]]:
     """Return numbered documents, coverage notes and loaded path -> line count.
 
     Limits apply to complete original UTF-8 blobs (not partially sliced rules).
@@ -98,6 +99,8 @@ def collect_context(after: str, paths: list[str]) -> tuple[str, list[str], dict[
     documents: list[str] = []
     line_counts: dict[str, int] = {}
     used = 0
+    rendered_used = 0
+    max_bytes = min(max_bytes, MAX_TOTAL_BYTES)
     attempted = 0
     for path in _candidates(paths, tree):
         entry = tree.get(path)
@@ -114,7 +117,7 @@ def collect_context(after: str, paths: list[str]) -> tuple[str, list[str], dict[
         attempted += 1
         try:
             size = int(git("cat-file", "-s", sha, limit=100).strip())
-            if size < 0 or size > MAX_FILE_BYTES or used + size > MAX_TOTAL_BYTES:
+            if size < 0 or size > MAX_FILE_BYTES or used + size > max_bytes:
                 notes.append(f"覆盖不完整：规范文档 {path} 超过单文件或总字节上限，整文件跳过（未截取）。")
                 continue
             data = git("cat-file", "blob", sha, limit=MAX_FILE_BYTES)
@@ -131,10 +134,16 @@ def collect_context(after: str, paths: list[str]) -> tuple[str, list[str], dict[
             notes.append(f"覆盖不完整：规范文档 {path} Git 对象读取失败，已跳过。")
             continue
         lines = text.splitlines()
+        document = (f"--- DOCUMENT: {path} ({len(lines)} lines) ---\n"
+                    + "\n".join(f"{number}: {line}" for number, line in enumerate(lines, 1)))
+        size_with_numbers = len(document.encode("utf-8")) + (2 if documents else 0)
+        if rendered_used + size_with_numbers > max_bytes:
+            notes.append(f"覆盖不完整：规范文档 {path} 加行号后超过本批上下文预算，整文件跳过。")
+            continue
         line_counts[path] = len(lines)
         used += size
-        documents.append(f"--- DOCUMENT: {path} ({len(lines)} lines) ---\n"
-                         + "\n".join(f"{number}: {line}" for number, line in enumerate(lines, 1)))
+        rendered_used += size_with_numbers
+        documents.append(document)
         notes.append(f"已加载规范文档：{path}（{len(lines)} 行）。")
     if not line_counts:
         notes.append("覆盖不完整：未加载任何规范文档，不能据此验证仓库规范。")

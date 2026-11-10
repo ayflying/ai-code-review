@@ -9,10 +9,9 @@ from pathlib import Path
 
 # -I 隔离 PYTHONPATH 和当前工作目录，仅加载本目录的审查模块。
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from changes import collect_changes  # noqa: E402
+from batch_review import review_batches  # noqa: E402
+from changes import collect_batches  # noqa: E402
 from notify import notify_risk  # noqa: E402
-from providers import review_project  # noqa: E402
-from review_context import collect_context  # noqa: E402
 from settings import load_settings, policy  # noqa: E402
 
 
@@ -34,11 +33,9 @@ def main() -> int:
     should_notify = False
     try:
         load_settings()
-        diff, notes, after, paths = collect_changes()
-        if diff:
-            context, context_notes, documents = collect_context(after, paths)
-            notes.extend(context_notes)
-            report, attempts, has_risk, should_notify = review_project(diff, context, documents)
+        batches, notes, after = collect_batches()
+        if batches:
+            report, attempts, has_risk, should_notify = review_batches(batches, after)
             notes.extend(attempts)
         else:
             report = "没有可供审查的文本变更，未调用 AI；不代表整个提交无风险。"

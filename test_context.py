@@ -122,10 +122,11 @@ class ContextTests(unittest.TestCase):
             self.put(f"docs/{index:02d}.md", str(index) + "x" * 11_998)
         after = self.commit()
         text, notes, counts = collect_context(after, [])
-        self.assertEqual(len(counts), 5)
+        self.assertEqual(len(counts), 4)
+        self.assertLessEqual(len(text.encode("utf-8")), 60_000)
         self.assertTrue(all(value == 1 for value in counts.values()))
         self.assertNotIn("DOCUMENT: docs/05.md", text)
-        self.assertTrue(any("总字节上限" in note for note in notes))
+        self.assertTrue(any("预算" in note or "总字节上限" in note for note in notes))
         self.assertTrue(any("20 文件上限" in note for note in notes))
         for index in range(25):
             self.put(f"docs/{index:02d}.md", "small")
@@ -133,6 +134,14 @@ class ContextTests(unittest.TestCase):
         _, notes, counts = collect_context(after, [])
         self.assertEqual(len(counts), 20)
         self.assertTrue(any("剩余文档未加载" in note for note in notes))
+
+    def test_numbered_context_respects_per_batch_byte_budget(self):
+        self.put("README.md", "规则\n" * 100)
+        after = self.commit()
+        text, notes, counts = collect_context(after, [], max_bytes=800)
+        self.assertLessEqual(len(text.encode("utf-8")), 800)
+        self.assertNotIn("README.md", counts)
+        self.assertTrue(any("行号" in note for note in notes))
 
     def test_invalid_revision_rejected_before_git(self):
         for after in ("HEAD", "-bad", "f" * 39, "f" * 65, "g" * 40, "f" * 40 + "\n"):

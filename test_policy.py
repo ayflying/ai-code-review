@@ -17,13 +17,12 @@ class PolicyTests(unittest.TestCase):
                 with patch.dict(os.environ, {
                     "AI_REVIEW_OPENAI_API_KEY": "test-key", "GITHUB_OUTPUT": str(output),
                     "RUNNER_TEMP": directory,
-                }), patch.object(run, "collect_changes", return_value=("diff", [], "a" * 40, ["app.py"])), \
-                        patch.object(run, "collect_context", return_value=("规范", [], {"AGENTS.md": 1})), \
-                        patch.object(run, "review_project", return_value=("报告", [], risk, should_notify)) as review, \
+                }), patch.object(run, "collect_batches", return_value=([("diff", ["app.py"])], [], "a" * 40)), \
+                        patch.object(run, "review_batches", return_value=("报告", [], risk, should_notify)) as review, \
                         patch.object(run, "notify_risk", return_value="通知状态") as notify:
                     self.assertEqual(run.main(), 0)
                     notify.assert_called_once()
-                    review.assert_called_once_with("diff", "规范", {"AGENTS.md": 1})
+                    review.assert_called_once_with([("diff", ["app.py"])], "a" * 40)
                     self.assertEqual(notify.call_args.args[1], should_notify)
                     self.assertEqual(output.read_text().strip(), f"has_risk={str(risk).lower()}")
 

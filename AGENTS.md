@@ -11,7 +11,8 @@
 | 文件 | 职责 |
 | --- | --- |
 | `changes.py` | 只读 Git 对象，确定 before..after，过滤与限制 diff |
-| `providers.py` | OpenAI Responses / Claude Messages 请求、主备切换 |
+| `providers.py` | OpenAI Responses / Claude Messages 请求、单批结构校验与主备切换 |
+| `batch_review.py` | 每批规范预算、独立审查、结果去重汇总及时间启动预算 |
 | `review_context.py` | 从被审提交 Git 对象读取有限文档与 Skill，不读工作区、不执行脚本 |
 | `report.py` | JSON 契约与规范原文引用校验、区分明确问题/建议/待确认 |
 | `notify.py` | 审查事项钉钉通知、地址校验、关键词和回执检查 |

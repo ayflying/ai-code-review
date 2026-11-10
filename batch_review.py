@@ -1,0 +1,87 @@
+"""逐批独立上下文审查；本地汇总有效结果，不再把所有差异塞给一次模型。"""
+
+import json
+import subprocess
+import time
+
+from providers import SYSTEM, review_data
+from report import parse_result
+from review_context import collect_context
+
+# 按 UTF-8 字节保守估计 token 上界（非精确分词），预留输出和协议开销。
+MAX_INPUT_BYTES = 48_000
+MAX_CONTEXT_BYTES = 18_000
+MAX_SECONDS = 900
+
+
+def _unique(items: list) -> list:
+    seen: set[str] = set()
+    result = []
+    for item in items:
+        key = json.dumps(item, ensure_ascii=False, sort_keys=True)
+        if key not in seen:
+            seen.add(key)
+            result.append(item)
+    return result
+
+
+def review_batches(batches: list[tuple[str, list[str]]], after: str
+                   ) -> tuple[str, list[str], bool, bool]:
+    """每批失败不覆盖其他批结论；建议通知与明确问题阻断分别累计。"""
+    notes = [f"分批审查：共 {len(batches)} 批；各批独立上下文，跨批关联问题可能漏报。"]
+    summaries: list[str] = []
+    findings: list[dict] = []
+    suggestions: list[str] = []
+    verification: list[str] = []
+    documents: dict[str, int] = {}
+    contexts: list[str] = []
+    deadline = time.monotonic() + MAX_SECONDS
+    completed = 0
+    for index, (diff, paths) in enumerate(batches, 1):
+        if time.monotonic() >= deadline:
+            notes.append(f"覆盖不完整：达到 {MAX_SECONDS} 秒启动预算，第 {index} 批起未审查；在途请求可能额外耗时。")
+            break
+        # 每个请求都单独计算预算并附带其涉及模块的规范。
+        budget = min(MAX_CONTEXT_BYTES, MAX_INPUT_BYTES - len(SYSTEM.encode("utf-8"))
+                     - len(diff.encode("utf-8")) - 1500)
+        if budget <= 0:
+            notes.append(f"覆盖不完整：第 {index} 批超过输入预算，未发送。")
+            continue
+        try:
+            context, context_notes, loaded = collect_context(after, paths, max_bytes=budget)
+            notes.extend(f"第 {index} 批：{note}" for note in context_notes)
+            data, attempts, provider = review_data(diff, context, loaded)
+        except (ValueError, OSError, subprocess.SubprocessError):
+            notes.append(f"覆盖不完整：第 {index} 批运行环境异常；保留其他批次结论。")
+            continue
+        notes.extend(f"第 {index} 批：{note}" for note in attempts)
+        if data is None:
+            notes.append(f"覆盖不完整：第 {index} 批主备审查均失败；不能据此判断安全。")
+            continue
+        completed += 1
+        summaries.append(f"第 {index} 批（{provider}）：{data['summary']}")
+        findings.extend(data["findings"])
+        suggestions.extend(data.get("suggestions", []))
+        verification.extend(data["verification"])
+        documents.update(loaded)
+        contexts.append(context)
+    findings = _unique(findings)
+    suggestions = _unique(suggestions)
+    verification = _unique(verification)
+    risk = bool(findings)
+    notify = bool(findings or suggestions or verification)
+    # 每批已经严格校验；分组渲染避免汇总超过单批40条契约而丢掉有效结论。
+    parts = [f"已完成 {completed}/{len(batches)} 批。未完成批次不代表安全。"]
+    if not completed:
+        parts.append("审查未完成，没有有效模型结论，不能据此判断安全。")
+        return "\n\n".join(parts), notes, False, False
+    summary = "\n".join(summaries)
+    count = max(len(findings), len(suggestions), len(verification), 1)
+    for offset in range(0, count, 40):
+        data = {"summary": summary if offset == 0 else "审查结果续表。",
+                "findings": findings[offset:offset + 40],
+                "suggestions": suggestions[offset:offset + 40],
+                "verification": verification[offset:offset + 40]}
+        body, _, _ = parse_result(json.dumps(data, ensure_ascii=False), documents, "\n\n".join(contexts))
+        parts.append(body)
+    return "\n\n".join(parts), notes, risk, notify

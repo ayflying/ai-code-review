@@ -96,19 +96,29 @@ def review(provider: str, diff: str, context: str = "") -> str:
     return text
 
 
-def review_project(diff: str, context: str = "", documents: dict[str, int] | None = None
-                   ) -> tuple[str, list[str], bool, bool]:
+def review_data(diff: str, context: str = "", documents: dict[str, int] | None = None
+                ) -> tuple[dict | None, list[str], str]:
+    """先校验每批结构及规范引用，只有有效原始结构才参与汇总。"""
     notices: list[str] = []
     for provider in ("OPENAI", "CLAUDE"):
         try:
             text = review(provider, diff, context) if context else review(provider, diff)
-            report, has_risk, should_notify = parse_result(text, documents, context)
-            return f"实际审查服务：{provider}\n\n" + report, notices, has_risk, should_notify
+            parse_result(text, documents, context)
+            return json.loads(text), notices, provider
         except ReviewError as error:
             notices.append(f"{provider}：{error}")
         except (KeyError, TypeError, AttributeError, ValueError):
             notices.append(f"{provider}：响应结构异常")
-    return "**审查未完成：两个服务均未能提供完整报告，不能据此判断无风险。**", notices, False, False
+    return None, notices, ""
+
+
+def review_project(diff: str, context: str = "", documents: dict[str, int] | None = None
+                   ) -> tuple[str, list[str], bool, bool]:
+    data, notices, provider = review_data(diff, context, documents)
+    if data is None:
+        return "**审查未完成：两个服务均未能提供完整报告，不能据此判断无风险。**", notices, False, False
+    report, risk, notify = parse_result(json.dumps(data, ensure_ascii=False), documents, context)
+    return f"实际审查服务：{provider}\n\n" + report, notices, risk, notify
 
 
 def review_with_fallback(diff: str) -> tuple[str, list[str], bool]:
