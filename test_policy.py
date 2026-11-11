@@ -22,7 +22,7 @@ class PolicyTests(unittest.TestCase):
                         patch.object(run, "notify_risk", return_value="通知状态") as notify:
                     self.assertEqual(run.main(), 0)
                     notify.assert_called_once()
-                    review.assert_called_once_with([("diff", ["app.py"])], "a" * 40)
+                    review.assert_called_once_with([("diff", ["app.py"])], "a" * 40, "")
                     self.assertEqual(notify.call_args.args[1], should_notify)
                     self.assertEqual(output.read_text().splitlines(), [f"has_risk={str(risk).lower()}",
                                                                      f"should_notify={str(should_notify).lower()}"])

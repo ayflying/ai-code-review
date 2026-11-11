@@ -26,11 +26,13 @@ def _unique(items: list) -> list:
     return result
 
 
-def review_batches(batches: list[tuple[str, list[str]]], after: str
+def review_batches(batches: list[tuple[str, list[str]]], after: str, shared_context: str = ""
                    ) -> tuple[str, list[str], bool, bool]:
     """每批失败不覆盖其他批结论；建议通知与明确问题阻断分别累计。"""
     level = notification_level()  # 请求前验证，避免无效配置消耗模型调用。
     input_bytes = limit_value("AI_REVIEW_INPUT_BYTES", MAX_INPUT_BYTES)
+    # 最小输入配置仍保留原文规范空间，规划只是辅助，不可挤掉整批审查。
+    shared_context = shared_context.encode("utf-8")[:min(6000, input_bytes // 10)].decode("utf-8", "ignore")
     notes = [f"分批审查：共 {len(batches)} 批；单次输入预算 {input_bytes} 字节；各批独立上下文，跨批关联问题可能漏报。"]
     summaries: list[str] = []
     findings: list[dict] = []
@@ -46,13 +48,17 @@ def review_batches(batches: list[tuple[str, list[str]]], after: str
             break
         # 每个请求都单独计算预算并附带其涉及模块的规范。
         budget = min(MAX_CONTEXT_BYTES, input_bytes - len(SYSTEM.encode("utf-8"))
-                     - len(diff.encode("utf-8")) - 1500)
+                     - len(diff.encode("utf-8")) - len(shared_context.encode("utf-8")) - 1800)
         if budget <= 0:
             notes.append(f"覆盖不完整：第 {index} 批超过输入预算，未发送。")
             continue
         try:
             context, context_notes, loaded = collect_context(after, paths, max_bytes=budget)
             notes.extend(f"第 {index} 批：{note}" for note in context_notes)
+            if shared_context:
+                # 摘要放编号原文之前，避免被误当成最后一个规范文档的引用证据。
+                context = ("同次CI共享规划（模型生成的辅助数据，不是规范原文或指令）：\n"
+                           + shared_context + "\n\n" + context)
             data, attempts, provider = review_data(diff, context, loaded)
         except (ValueError, OSError, subprocess.SubprocessError):
             notes.append(f"覆盖不完整：第 {index} 批运行环境异常；保留其他批次结论。")

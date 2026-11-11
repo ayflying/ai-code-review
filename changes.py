@@ -185,7 +185,7 @@ def split_file_diff(path: str, text: str, budget: int) -> tuple[list[str], list[
     return result, notes
 
 
-def collect_batches() -> tuple[list[tuple[str, list[str]]], list[str], str]:
+def collect_batches(planner=None) -> tuple[list[tuple[str, list[str]]], list[str], str]:
     """Bounded review patches and their Git-derived file membership."""
     max_batches = limit_value("AI_REVIEW_MAX_BATCHES", MAX_BATCHES)
     max_files = limit_value("AI_REVIEW_MAX_FILES", MAX_BATCH_FILES)
@@ -197,6 +197,8 @@ def collect_batches() -> tuple[list[tuple[str, list[str]]], list[str], str]:
     total_bytes = min(MAX_TOTAL_BYTES, max_batches * batch_bytes)
     before, after, notes, paths = _resolve_changes()
     notes.append(f"分批配置：最多 {max_batches} 批、{max_files} 文件，每批 {batch_bytes} 字节，总差异 {total_bytes} 字节。")
+    candidates: list[tuple[str, str]] = []
+    candidate_bytes = 0
     batches: list[tuple[str, list[str]]] = []
     current = ""
     members: list[str] = []
@@ -223,6 +225,21 @@ def collect_batches() -> tuple[list[tuple[str, list[str]]], list[str], str]:
         except UnicodeDecodeError:
             excluded += 1
             notes.append(f"覆盖不完整：{path} 的差异不是有效 UTF-8，已跳过而非替换源码字符。")
+            continue
+        # 筛选在分批前执行；总缓存独立硬上限，不能因模型规划无界保留差异。
+        if candidate_bytes + len(data) > MAX_TOTAL_BYTES:
+            limited += 1
+            continue
+        candidates.append((path, text))
+        candidate_bytes += len(data)
+    selected = {path for path, _ in candidates}
+    if planner and candidates:
+        selected, plan_notes = planner(after, [
+            {"path": path, "bytes": len(text.encode("utf-8")), "sample": text[:1600]}
+            for path, text in candidates])
+        notes.extend(plan_notes)
+    for path, text in candidates:
+        if path not in selected:
             continue
         pieces, split_notes = split_file_diff(path, text, batch_bytes)
         notes.extend(split_notes)

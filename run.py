@@ -13,7 +13,7 @@ from batch_review import review_batches  # noqa: E402
 from changes import collect_batches  # noqa: E402
 from notify import notify_risk  # noqa: E402
 from report_artifact import write_report  # noqa: E402
-from settings import load_settings, policy  # noqa: E402
+from settings import limit_value, load_settings, policy  # noqa: E402
 
 
 def sanitize(text: str) -> str:
@@ -36,7 +36,16 @@ def main() -> int:
     report = "审查未完成，不能据此判断无风险。"
     try:
         load_settings()
-        batches, notes, after = collect_batches()
+        from review_plan import select_files
+        shared_plan = ""
+
+        def planner(commit: str, files: list[dict]):
+            nonlocal shared_plan
+            selected, shared_plan, plan_notes = select_files(
+                commit, files, input_bytes=limit_value("AI_REVIEW_INPUT_BYTES"))
+            return selected, plan_notes
+
+        batches, notes, after = collect_batches(planner=planner)
         # 由已解析的Git提交获取说明，不信任事件中的可执行内容，也不依赖通知步骤的cwd。
         try:
             subject = subprocess.run(["git", "show", "-s", "--format=%s", after],
@@ -45,10 +54,10 @@ def main() -> int:
         except (OSError, subprocess.SubprocessError):
             subject = ""
         if batches:
-            report, attempts, has_risk, should_notify = review_batches(batches, after)
+            report, attempts, has_risk, should_notify = review_batches(batches, after, shared_plan)
             notes.extend(attempts)
         else:
-            report = "没有可供审查的文本变更，未调用 AI；不代表整个提交无风险。"
+            report = "没有进入详细审查的文本变更（基础排除或规划筛选后为空），未执行代码详细审查；不代表整个提交无风险。"
         body = "# AI Code Review\n\n" + "\n".join(notes) + "\n\n" + report
     except (ValueError, OSError, subprocess.SubprocessError):
         body = "# AI Code Review\n\n审查未完成：配置、Git 对象或运行环境异常。不能据此判断无风险。"

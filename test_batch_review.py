@@ -14,6 +14,16 @@ def data(findings=None, suggestions=None, verification=None):
 
 
 class BatchReviewTests(unittest.TestCase):
+    def test_shared_plan_reused_without_replacing_numbered_rules(self):
+        with patch.object(batch_review, "collect_context", return_value=("--- DOCUMENT: AGENTS.md (1 lines) ---\n1: 原文", [], {"AGENTS.md": 1})), \
+                patch.object(batch_review, "review_data", return_value=(data(), [], "OPENAI")) as review:
+            batch_review.review_batches([("a", []), ("b", [])], "a" * 40, "业务规划")
+        self.assertEqual(review.call_count, 2)
+        for call in review.call_args_list:
+            self.assertIn("业务规划", call.args[1])
+            self.assertIn("1: 原文", call.args[1])
+            self.assertLess(call.args[1].index("业务规划"), call.args[1].index("--- DOCUMENT:"))
+
     def test_merge_dedup_and_independent_module_context(self):
         with patch.object(batch_review, "collect_context", side_effect=[("规范A", [], {}), ("规范B", [], {})]) as context, \
                 patch.object(batch_review, "review_data", side_effect=[

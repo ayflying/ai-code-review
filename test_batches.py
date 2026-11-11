@@ -18,6 +18,20 @@ def source_lines(text):
 
 
 class SplitTests(unittest.TestCase):
+    def test_planner_filters_before_batch_budget_is_spent(self):
+        with patch.object(changes, "_resolve_changes", return_value=("a", "b", [], ["gen.py", "app.py"])), \
+                patch.object(changes, "_read_diff", side_effect=[patch_text("gen.py").encode(), patch_text("app.py").encode()]):
+            calls = []
+            def planner(after, files):
+                calls.append((after, files))
+                return {"app.py"}, ["generated skipped"]
+            batches, notes, after = changes.collect_batches(planner=planner)
+        self.assertEqual(calls[0][0], "b")
+        self.assertEqual(len(calls[0][1]), 2)
+        self.assertEqual(batches[0][1], ["app.py"])
+        self.assertNotIn("gen.py", batches[0][0])
+        self.assertIn("generated skipped", notes)
+
     def test_utf8_budget_and_all_lines(self):
         text = patch_text(body="+中文😀\n" * 80, new=80)
         pieces, notes = changes.split_file_diff("app.py", text, 230)
