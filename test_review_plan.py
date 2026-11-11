@@ -143,7 +143,7 @@ class PlanningTests(unittest.TestCase):
     def test_start_deadline_prevents_fallback_and_remaining_groups(self):
         files = [file(str(i)) for i in range(3)]
         with patch.object(plan, "MAX_GROUP_FILES", 1), patch.object(plan.time, "monotonic",
-                side_effect=[0, 0, 0, 121, 122, 123]), self.request(
+                side_effect=[0, 0, 0, 901, 902, 903]), self.request(
                     side_effect=plan.providers.ReviewError("timeout")) as request:
             selected, _, notes = plan.plan_files(files, "", 10000)
         self.assertEqual(request.call_count, 1)

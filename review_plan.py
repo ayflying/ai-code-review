@@ -11,10 +11,11 @@ import unicodedata
 from collections.abc import Callable
 
 import providers
+from planning_retry import request_with_retries
 from review_context import collect_context
 
 MAX_GROUPS = 20
-MAX_SECONDS = 120
+MAX_SECONDS = 900  # 容纳首次请求+5次超时重试、退避以及Claude备用请求启动。
 MAX_SHARED_BYTES = 6000
 MAX_CONTEXT_BYTES = 12_000
 MAX_SAMPLE_BYTES = 2000
@@ -177,11 +178,11 @@ def plan_files(files: list[dict], context: str, input_bytes: int
                     failures.append(f"{provider} 未调用：规划阶段 {MAX_SECONDS} 秒启动预算已用完")
                     break
                 try:
-                    data = _validate(providers.planning_request(provider, prompt), paths)
+                    data = _validate(request_with_retries(provider, prompt, failures), paths)
                     break
                 except providers.ReviewError as error:
                     # ReviewError由请求层生成固定安全说明，不含响应正文、地址或密钥。
-                    safe_reasons = {"未配置密钥或模型", "接口请求超时（120秒）", "接口连接失败（DNS、TLS或连接不可用）",
+                    safe_reasons = {"OpenAI首次请求及5次重试均超时", "未配置密钥或模型", "接口请求超时（120秒）", "接口连接失败（DNS、TLS或连接不可用）",
                                     "接口网络连接中断", "接口返回无效 JSON", "接口响应超过安全上限",
                                     "接口返回重定向，已拒绝转发认证信息", "接口地址必须使用 HTTPS 且不能内嵌凭据",
                                     "接口基础地址不能包含查询参数或片段", "OpenAI 未返回完整结果",
@@ -205,7 +206,7 @@ def plan_files(files: list[dict], context: str, input_bytes: int
                     failures.append(f"{provider}：响应处理异常，未取得有效文件决策")
         if failures:
             notes.append(f"文件筛选第 {index + 1} 组（{len(group)} 文件）：" + "；".join(failures)
-                         + ("；备用服务已成功完成筛选。" if data is not None else
+                         + (f"；{provider} 已成功完成筛选。" if data is not None else
                             "；本组未取得有效筛选结果，全部保留为详细审查候选。"))
         if data is None:
             for file in group:
