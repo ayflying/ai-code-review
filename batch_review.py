@@ -7,6 +7,7 @@ import time
 from providers import SYSTEM, review_data
 from report import parse_result
 from review_context import collect_context
+from risk_score import score_of
 from settings import limit_value, notification_level, should_notify_result
 
 # 按 UTF-8 字节保守估计 token 上界（非精确分词），预留输出和协议开销。
@@ -74,7 +75,7 @@ def review_batches(batches: list[tuple[str, list[str]]], after: str, shared_cont
         verification.extend(data["verification"])
         documents.update(loaded)
         contexts.append(context)
-    findings = sorted(_unique(findings), key=lambda item: {"high": 90, "medium": 60, "low": 30}[item["severity"]], reverse=True)
+    findings = sorted(_unique(findings), key=score_of, reverse=True)
     suggestions = _unique(suggestions)
     verification = _unique(verification)
     risk = bool(findings)

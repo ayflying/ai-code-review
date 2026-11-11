@@ -33,7 +33,7 @@ details{color:#e2e8f0;background:#202b3c;border-color:#475569}
 def render_report(text: str) -> str:
     """支持报告标题、字段及普通段落；不解释原始HTML、链接或任意Markdown扩展。"""
     parts = []
-    labels = {"触发条件", "影响", "变更证据", "修复建议", "规范依据"}
+    labels = {"触发条件", "影响", "变更证据", "修复建议", "规范依据", "评分理由"}
     for line in text.splitlines():
         line = line.strip()
         if not line:

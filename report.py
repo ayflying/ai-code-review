@@ -3,12 +3,18 @@
 import json
 import re
 
+from risk_score import score_of, score_reason
+
 CONTRACT = """
 只返回一个 JSON 对象，不要 Markdown 围栏。字段：
 summary: 中文总体结论；findings: 明确问题数组；suggestions: 中文改进建议字符串数组；
 verification: 中文待确认事项字符串数组。没有内容时对应数组为 []。
 每条 findings 必须包含非空字符串 severity（high/medium/low）、file、line、
 condition（触发条件）、impact、evidence（变更证据，不含秘密）、suggestion（修复建议）。
+每条 findings 另含 score（0～100整数）和 score_reason（简短中文评分理由）。
+score独立评估影响大小、触发难易与影响范围，不按severity固定赋分；证据不足应降低判断确定性，
+不编造概率或受影响人数。80～100优先处理严重影响，50～79中等影响，0～49较低影响；
+severity仍按原定义判断，分数用于修复排序，不是CVSS或已验证漏洞结论。
 kind 为 risk（实际代码风险）或 policy（明确违反项目规范）。
 policy 必须另含 rule_file（已提供的规范路径）、rule_line（规范行号字符串）、
 rule（该行开始的原文引用）。规则须适用于该变更，且有明确违反证据；
@@ -42,12 +48,14 @@ def parse_result(text: str, documents: dict[str, int] | None = None,
             not isinstance(finding.get(key), str) or not finding[key].strip() for key in fields
         ) or finding["severity"] not in {"high", "medium", "low"}:
             raise ValueError("无效问题条目")
+        score = score_of(finding)
         kind = finding.get("kind", "risk")
         if kind not in {"risk", "policy"}:
             raise ValueError("无效问题类型")
         label = "代码风险" if kind == "risk" else "违反项目规范"
         lines.extend([
-            f"### {finding['severity']} | {label} | {finding['file']}:{finding['line']}",
+            f"### {finding['severity']} | {label} | {finding['file']}:{finding['line']} | 危险度 {score}/100",
+            f"评分理由：{score_reason(finding)}",
             f"触发条件：{finding['condition']}", f"影响：{finding['impact']}",
             f"变更证据：{finding['evidence']}",
         ])

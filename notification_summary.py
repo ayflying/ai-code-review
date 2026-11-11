@@ -2,6 +2,8 @@
 
 import re
 
+from risk_score import DEFAULT_SCORES
+
 
 def short_text(value: str, limit: int = 100) -> str:
     """清理 Markdown 和控制字符，避免模型内容改变通知布局。"""
@@ -11,22 +13,28 @@ def short_text(value: str, limit: int = 100) -> str:
 
 
 def summarize(report: str) -> str:
-    """严重项全部保留，按固定严重度分排序；非严重项最多补两条。"""
+    """按独立危险度评分排序，最多展示三项；旧结果明确标为等级参考。"""
     lines = [line.removeprefix("报告 | ").strip() for line in report.splitlines()]
     counts = {"明确问题": 0, "改进建议": 0, "待确认事项": 0}
     points = []
     section = ""
     severity = ""
     levels = {"high": "🔴 严重问题", "medium": "🟠 中等问题", "low": "🟡 轻微问题"}
-    scores = {"high": 90, "medium": 60, "low": 30}
+    score = 0
+    reference = False
     for line in lines:
         if line.startswith("## "):
             section = line[3:]
         elif section == "明确问题" and re.match(r"### (high|medium|low) \|", line):
             counts[section] += 1
             severity = line.split()[1]
+            match = re.search(r"\| 危险度 (100|[0-9]{1,2})/100$", line)
+            score = int(match[1]) if match else DEFAULT_SCORES[severity]
+            reference = not bool(match)
+        elif section == "明确问题" and line.startswith("评分理由："):
+            reference = "模型未提供独立评分" in line
         elif section == "明确问题" and line.startswith("影响：") and severity:
-            points.append((scores[severity], f"**{levels[severity]} · {scores[severity]}分**：{short_text(line[3:], 100)}"))
+            points.append((score, f"**{levels[severity]} · {score}分{'（等级参考）' if reference else ''}**：{short_text(line[3:], 100)}"))
         elif section in {"改进建议", "待确认事项"} and line and line != "无。":
             counts[section] += 1
     result = [" / ".join(f"{name} {number} 项" for name, number in counts.items())]
@@ -35,7 +43,7 @@ def summarize(report: str) -> str:
     if len(points) > 3:
         result.append(f"仅展示优先级最高的 3 项，其余 {len(points) - 3} 项见详细报告。")
     if points:
-        result.append("严重度评分：high 90 / medium 60 / low 30；同级保留报告顺序，不是漏洞验证或CVSS评分。")
+        result.append("危险度为修复优先级估计，分数越高越优先；评分理由见详情，非漏洞验证或CVSS评分。")
     if not points:
         # 无明确风险时也展示首条建议或待确认，不让消息只剩计数和链接。
         for heading in ("改进建议", "待确认事项"):
