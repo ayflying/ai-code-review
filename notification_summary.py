@@ -11,25 +11,31 @@ def short_text(value: str, limit: int = 100) -> str:
 
 
 def summarize(report: str) -> str:
-    """计数来自本地已渲染契约；只展示前两项影响，不重述长篇模型总结。"""
+    """严重项全部保留，按固定严重度分排序；非严重项最多补两条。"""
     lines = [line.removeprefix("报告 | ").strip() for line in report.splitlines()]
     counts = {"明确问题": 0, "改进建议": 0, "待确认事项": 0}
     points = []
     section = ""
     severity = ""
     levels = {"high": "🔴 严重问题", "medium": "🟠 中等问题", "low": "🟡 轻微问题"}
+    scores = {"high": 90, "medium": 60, "low": 30}
     for line in lines:
         if line.startswith("## "):
             section = line[3:]
         elif section == "明确问题" and re.match(r"### (high|medium|low) \|", line):
             counts[section] += 1
             severity = line.split()[1]
-        elif section == "明确问题" and line.startswith("影响：") and len(points) < 2:
-            points.append(f"**{levels.get(severity, '明确问题')}**：{short_text(line[3:], 100)}")
+        elif section == "明确问题" and line.startswith("影响：") and severity:
+            points.append((scores[severity], f"**{levels[severity]} · {scores[severity]}分**：{short_text(line[3:], 100)}"))
         elif section in {"改进建议", "待确认事项"} and line and line != "无。":
             counts[section] += 1
     result = [" / ".join(f"{name} {number} 项" for name, number in counts.items())]
-    result.extend(points)
+    points.sort(key=lambda item: item[0], reverse=True)
+    severe = [text for score, text in points if score == 90]
+    other = [text for score, text in points if score != 90]
+    result.extend(severe + other[:2])
+    if points:
+        result.append("严重度评分：high 90 / medium 60 / low 30；同级保留报告顺序，不是漏洞验证或CVSS评分。")
     if not points:
         # 无明确风险时也展示首条建议或待确认，不让消息只剩计数和链接。
         for heading in ("改进建议", "待确认事项"):

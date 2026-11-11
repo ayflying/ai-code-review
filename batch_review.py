@@ -74,7 +74,7 @@ def review_batches(batches: list[tuple[str, list[str]]], after: str, shared_cont
         verification.extend(data["verification"])
         documents.update(loaded)
         contexts.append(context)
-    findings = _unique(findings)
+    findings = sorted(_unique(findings), key=lambda item: {"high": 90, "medium": 60, "low": 30}[item["severity"]], reverse=True)
     suggestions = _unique(suggestions)
     verification = _unique(verification)
     risk = bool(findings)
