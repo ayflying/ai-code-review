@@ -64,8 +64,14 @@ def request_json(url: str, headers: dict[str, str], payload: dict) -> dict:
         return result
     except HTTPError as error:
         raise ReviewError(f"接口 HTTP {error.code}") from None
-    except (URLError, TimeoutError, OSError):
-        raise ReviewError("接口网络错误或超时") from None
+    except TimeoutError:
+        raise ReviewError("接口请求超时（120秒）") from None
+    except URLError as error:
+        if isinstance(error.reason, TimeoutError):
+            raise ReviewError("接口请求超时（120秒）") from None
+        raise ReviewError("接口连接失败（DNS、TLS或连接不可用）") from None
+    except OSError:
+        raise ReviewError("接口网络连接中断") from None
     except (ValueError, UnicodeError):
         raise ReviewError("接口返回无效 JSON") from None
 

@@ -57,7 +57,7 @@ class PlanningTests(unittest.TestCase):
                     selected, shared, notes = plan.plan_files(files, "", 10000)
                 self.assertEqual(selected, {"a", "b"})
                 self.assertFalse(shared)
-                self.assertEqual(len(notes), 2)
+                self.assertEqual(len(notes), 3)
                 self.assertEqual(request.call_count, 2)
 
     def test_reject_duplicate_json_keys_fences_extra_keys_and_types(self):
@@ -120,14 +120,25 @@ class PlanningTests(unittest.TestCase):
             selected, _, notes = plan.plan_files(files, "", 6500)
         self.assertEqual(request.call_count, 20)
         self.assertEqual(selected, {f["path"] for f in files})
-        self.assertEqual(len(notes), 30)
-        self.assertIn("保守保留", notes[-1])
+        self.assertEqual(len(notes), 40)
+        self.assertIn("超过最多 20 组", "\n".join(notes))
+        self.assertIn("保留待审", notes[-1])
 
     def test_actual_input_not_original_diff_size_controls_batching(self):
         files = [file("a", size=9999999), file("b", size=9999999)]
         with self.request(return_value=result(files)) as request:
             plan.plan_files(files, "", 10000)
         self.assertEqual(request.call_count, 1)
+
+    def test_specific_provider_and_validation_reasons_visible(self):
+        files = [file("a")]
+        with self.request(side_effect=[plan.providers.ReviewError("接口 HTTP 429"), "not json"]):
+            _, _, notes = plan.plan_files(files, "", 10000)
+        text = "\n".join(notes)
+        self.assertIn("OPENAI：接口 HTTP 429", text)
+        self.assertIn("CLAUDE：返回内容不是合法JSON", text)
+        self.assertIn("不表示该文件已完成详细审查", text)
+        self.assertNotIn("规划失败、超出组数或启动预算", text)
 
     def test_start_deadline_prevents_fallback_and_remaining_groups(self):
         files = [file(str(i)) for i in range(3)]
@@ -137,7 +148,9 @@ class PlanningTests(unittest.TestCase):
             selected, _, notes = plan.plan_files(files, "", 10000)
         self.assertEqual(request.call_count, 1)
         self.assertEqual(selected, {"0", "1", "2"})
-        self.assertEqual(len(notes), 3)
+        self.assertEqual(len(notes), 6)
+        self.assertIn("启动预算已用完", "\n".join(notes))
+        self.assertIn("CLAUDE 未调用", "\n".join(notes))
 
     def test_summaries_are_bounded_and_never_used_as_history(self):
         files = [file(str(n)) for n in range(8)]

@@ -163,21 +163,53 @@ def plan_files(files: list[dict], context: str, input_bytes: int
     for index, group in enumerate(groups):
         data = None
         paths = {f["path"] for f in group}
-        if index < MAX_GROUPS and time.monotonic() < deadline and len(paths) == len(group):
+        failures = []
+        if index >= MAX_GROUPS:
+            failures.append(f"未调用模型：第 {index + 1} 组超过最多 {MAX_GROUPS} 组的规划限制")
+        elif time.monotonic() >= deadline:
+            failures.append(f"未调用模型：规划阶段 {MAX_SECONDS} 秒启动预算已用完")
+        elif len(paths) != len(group):
+            failures.append("未调用模型：候选清单含重复文件路径")
+        else:
             prompt = _prompt(group, context)
             for provider in ("OPENAI", "CLAUDE"):
                 if time.monotonic() >= deadline:
+                    failures.append(f"{provider} 未调用：规划阶段 {MAX_SECONDS} 秒启动预算已用完")
                     break
                 try:
                     data = _validate(providers.planning_request(provider, prompt), paths)
                     break
-                except (providers.ReviewError, ValueError, TypeError, AttributeError, UnicodeError,
-                        OSError, RecursionError):
-                    # Never echo provider error bodies, raw JSON or secrets.
-                    continue
+                except providers.ReviewError as error:
+                    # ReviewError由请求层生成固定安全说明，不含响应正文、地址或密钥。
+                    safe_reasons = {"未配置密钥或模型", "接口请求超时（120秒）", "接口连接失败（DNS、TLS或连接不可用）",
+                                    "接口网络连接中断", "接口返回无效 JSON", "接口响应超过安全上限",
+                                    "接口返回重定向，已拒绝转发认证信息", "接口地址必须使用 HTTPS 且不能内嵌凭据",
+                                    "接口基础地址不能包含查询参数或片段", "OpenAI 未返回完整结果",
+                                    "Claude 未返回完整结果", "接口未返回文本报告"}
+                    reason = str(error)
+                    if reason not in safe_reasons and not re.fullmatch(r"接口 HTTP [1-5][0-9]{2}", reason):
+                        reason = "模型调用失败（请求层未提供可公开的原因）"
+                    failures.append(f"{provider}：{reason}")
+                except json.JSONDecodeError:
+                    failures.append(f"{provider}：返回内容不是合法JSON，无法读取文件筛选结果")
+                except ValueError as error:
+                    reasons = {
+                        "response too large": "响应超过大小限制", "duplicate JSON key": "JSON字段重复",
+                        "invalid root": "顶层字段缺失或包含未知字段", "invalid summary": "项目摘要无效或过长",
+                        "invalid focus": "审查关注点格式无效或过长", "missing paths": "返回文件数量不符或遗漏文件",
+                        "invalid row": "文件决策字段缺失或多余", "unknown or duplicate path": "返回未知或重复文件路径",
+                        "invalid decision": "文件决策不是review、skip或uncertain", "invalid explanation": "文件理由或证据无效或过长",
+                    }
+                    failures.append(f"{provider}：筛选结果校验失败，{reasons.get(str(error), '数据格式不符合约定')}")
+                except (TypeError, AttributeError, UnicodeError, OSError, RecursionError):
+                    failures.append(f"{provider}：响应处理异常，未取得有效文件决策")
+        if failures:
+            notes.append(f"文件筛选第 {index + 1} 组（{len(group)} 文件）：" + "；".join(failures)
+                         + ("；备用服务已成功完成筛选。" if data is not None else
+                            "；本组未取得有效筛选结果，全部保留为详细审查候选。"))
         if data is None:
             for file in group:
-                notes.append(f"{_clean(file['path'], 500)}：review；规划失败、超出组数或启动预算，保守保留。")
+                notes.append(f"{_clean(file['path'], 500)}：保留待审；具体原因见文件筛选第 {index + 1} 组说明；不表示该文件已完成详细审查。")
             continue
         by_path = {file["path"]: file for file in group}
         for row in data["files"]:

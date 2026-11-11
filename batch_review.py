@@ -69,6 +69,8 @@ def review_batches(batches: list[tuple[str, list[str]]], after: str, shared_cont
             notes.append(f"覆盖不完整：第 {index} 批主备审查均失败；不能据此判断安全。")
             continue
         completed += 1
+        for path in paths:
+            notes.append(f"详细审查第 {index} 批已返回有效结论：{path}（仅本批所含差异片段，不代表文件完整覆盖）。")
         summaries.append(f"第 {index} 批（{provider}）：{data['summary']}")
         findings.extend(data["findings"])
         suggestions.extend(data.get("suggestions", []))
