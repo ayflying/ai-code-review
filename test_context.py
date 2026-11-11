@@ -75,7 +75,7 @@ class ContextTests(unittest.TestCase):
                                           "app/AGENTS.md", "app/README.md"])
         self.assertEqual(list(counts)[-1], "docs/design.md")
         self.assertTrue(all(path in counts for path in fixtures if path.endswith("/SKILL.md")))
-        self.assertTrue(any("app/nested/README.md" in note and "缺失" in note for note in notes))
+        self.assertFalse(any("app/nested/README.md" in note and "缺失" in note for note in notes))
         # Every blob read uses an object ID, never after:path or filesystem paths.
         for call in calls.call_args_list:
             if call.args[0] == "cat-file":
@@ -188,6 +188,22 @@ class ContextTests(unittest.TestCase):
         self.assertNotIn("hidden rules", text)
         self.assertNotIn("bad\nname", "\n".join(notes))
         self.assertTrue(any("非普通 blob" in note for note in notes))
+
+    def test_optional_ancestor_documents_missing_are_not_coverage_errors(self):
+        self.put("README.md", "根目录规范")
+        after = self.commit()
+        text, notes, counts = collect_context(after, ["Assets/GameMain/Views/UI/main.cs"])
+        self.assertIn("根目录规范", text)
+        self.assertIn("README.md", counts)
+        self.assertFalse(any("规范文档缺失" in note or "覆盖不完整" in note for note in notes))
+
+    def test_no_project_documents_has_one_clear_scope_note(self):
+        self.put("src/app.py", "pass")
+        after = self.commit()
+        _, notes, counts = collect_context(after, ["src/app.py"])
+        self.assertFalse(counts)
+        self.assertEqual(len([note for note in notes if "未加载任何项目规范" in note]), 1)
+        self.assertNotIn("规范文档缺失", "\n".join(notes))
 
     def test_empty_document_and_unavailable_commit(self):
         self.put("README.md", "")

@@ -90,7 +90,8 @@ def collect_context(after: str, paths: list[str], max_bytes: int = MAX_TOTAL_BYT
     for path in _candidates(paths, tree):
         entry = tree.get(path)
         if entry is None:
-            notes.append(f"规范文档缺失：{path}（覆盖不完整）。")
+            # 逐级探测的是可选规范，不要求每个目录都创建AGENTS.md/README.md。
+            # 真正的Git扫描失败由discover记录；不能把不存在与读取失败混为一谈。
             continue
         mode, kind, sha = entry
         if mode not in {"100644", "100755"} or kind != "blob":
@@ -137,5 +138,5 @@ def collect_context(after: str, paths: list[str], max_bytes: int = MAX_TOTAL_BYT
         documents.append(document)
         notes.append(f"已加载规范文档：{path}（{len(lines)} 行）。")
     if not line_counts:
-        notes.append("覆盖不完整：未加载任何规范文档，不能据此验证仓库规范。")
+        notes.append("未加载任何项目规范文档：本次仅依据代码差异审查，未验证项目规范；不要求各目录新建规范文件。")
     return "\n\n".join(documents), list(dict.fromkeys(notes)), line_counts
