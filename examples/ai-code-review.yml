@@ -7,6 +7,7 @@ env:
   AI_REVIEW_DINGTALK_WEBHOOK: ${{ secrets.AI_REVIEW_DINGTALK_WEBHOOK }}  # 默认机器人；不填其他地址，禁止明文；Secret 缺失则不通知
   AI_REVIEW_NOTIFY_LEVEL: ${{ vars.AI_REVIEW_NOTIFY_LEVEL || 'all' }}  # all：问题/建议/待确认均通知；low/medium/high：明确问题达到该级别才通知，不影响阻断
   AI_REVIEW_DINGTALK_KEYWORD: ${{ vars.AI_REVIEW_DINGTALK_KEYWORD || 'gitea' }}  # 机器人安全关键词
+  AI_REVIEW_TOOL_REPOSITORY: ${{ vars.AI_REVIEW_TOOL_REPOSITORY || 'https://github.com/ayflying/ai-code-review.git' }}  # 审查器仓库HTTPS地址，可改为自建镜像；不得内嵌凭据
   AI_REVIEW_TOOL_REF: ${{ vars.AI_REVIEW_TOOL_REF || 'main' }}  # 默认自动更新；可在后台改为不可变标签回退/锁定
   AI_REVIEW_MAX_BATCHES: ${{ vars.AI_REVIEW_MAX_BATCHES || '20' }}  # 最多审查批数，允许1–200；调大会增加调用费用和时间
   AI_REVIEW_MAX_FILES: ${{ vars.AI_REVIEW_MAX_FILES || '300' }}  # 最多考虑文件数，允许1–5000
@@ -54,17 +55,58 @@ jobs:
         continue-on-error: true
         shell: bash
         env:
-          AI_REVIEW_TOOL_TOKEN: ${{ secrets.AI_REVIEW_TOOL_READ_TOKEN || gitea.token }}
+          AI_REVIEW_TOOL_TOKEN: ${{ secrets.AI_REVIEW_TOOL_READ_TOKEN }}
+          AI_REVIEW_LOCAL_TOKEN: ${{ gitea.token }}
+          AI_REVIEW_SERVER_URL: ${{ gitea.server_url }}
         run: |
           set -euo pipefail
           tool_dir="$(mktemp -d "$RUNNER_TEMP/ai-code-review.XXXXXX")"
-          # 凭据仅通过临时 askpass 注入，不嵌入 URL 或写入 Git 配置。
+          default_repository='https://github.com/ayflying/ai-code-review.git'
+          # 校验地址并隔离凭据；不输出URL，避免错误配置内嵌凭据进入日志。
+          python3 - <<'PY'
+          import os
+          from urllib.parse import urlsplit
+          try:
+              u = urlsplit(os.environ['AI_REVIEW_TOOL_REPOSITORY'])
+              assert u.scheme == 'https' and u.hostname and not u.username and not u.password
+              assert not u.query and not u.fragment
+          except (ValueError, AssertionError):
+              raise SystemExit('审查器仓库地址无效，需要不含凭据的HTTPS地址。')
+          PY
           askpass="$(mktemp "$RUNNER_TEMP/ai-review-askpass.XXXXXX")"
           trap 'rm -f "$askpass"' EXIT
-          printf '%s\n' '#!/bin/sh' 'case "$1" in *Username*) echo x-access-token;; *) printf "%s\\n" "$AI_REVIEW_TOOL_TOKEN";; esac' > "$askpass"
+          printf '%s\n' '#!/bin/sh' 'case "$1" in *Username*) echo x-access-token;; *) printf "%s\\n" "$AI_REVIEW_CLONE_TOKEN";; esac' > "$askpass"
           chmod 700 "$askpass"
-          GIT_ASKPASS="$askpass" GIT_TERMINAL_PROMPT=0 git clone --quiet --depth 1 --branch "$AI_REVIEW_TOOL_REF" \
-            https://gitea.adesk.com/actions/ai-code-review.git "$tool_dir"
+          export AI_REVIEW_CLONE_TOKEN="$AI_REVIEW_TOOL_TOKEN"
+          # 只有与当前Gitea完全同源时才使用任务令牌。
+          if [[ -z "$AI_REVIEW_CLONE_TOKEN" ]] && python3 - <<'PY'
+          import os
+          from urllib.parse import urlsplit
+          a, b = (urlsplit(os.environ[k]) for k in ('AI_REVIEW_TOOL_REPOSITORY', 'AI_REVIEW_SERVER_URL'))
+          raise SystemExit(0 if (a.scheme, a.hostname, a.port) == (b.scheme, b.hostname, b.port) else 1)
+          PY
+          then
+            export AI_REVIEW_CLONE_TOKEN="$AI_REVIEW_LOCAL_TOKEN"
+          fi
+          clone_tool() {
+            GIT_ASKPASS="$askpass" GIT_TERMINAL_PROMPT=0 git -c credential.helper= -c http.followRedirects=false \
+              clone --quiet --depth 1 --branch "$AI_REVIEW_TOOL_REF" "$1" "$2" 2>/dev/null
+          }
+          if ! clone_tool "$AI_REVIEW_TOOL_REPOSITORY" "$tool_dir/source"; then
+            if [[ "$AI_REVIEW_TOOL_REPOSITORY" == "$default_repository" ]]; then
+              echo '默认GitHub审查器拉取失败，请检查网络或版本引用。'
+              exit 1
+            fi
+            echo '配置仓库拉取失败，改用默认GitHub仓库（保持相同版本引用）。'
+            export AI_REVIEW_CLONE_TOKEN=''
+            if ! clone_tool "$default_repository" "$tool_dir/fallback"; then
+              echo '默认GitHub备用仓库也拉取失败，审查器未加载。'
+              exit 1
+            fi
+            tool_dir="$tool_dir/fallback"
+          else
+            tool_dir="$tool_dir/source"
+          fi
           echo "AI_REVIEW_TOOL_DIR=$tool_dir" >> "$GITHUB_ENV"
           echo "审查器版本：$(git -C "$tool_dir" rev-parse HEAD)"
 

@@ -33,6 +33,11 @@ class PolicyTests(unittest.TestCase):
         self.assertIn('"$AI_REVIEW_TOOL_DIR/run.py" --policy', workflow)
         self.assertIn("vars.AI_REVIEW_TOOL_REF || 'main'", workflow)
         self.assertNotIn("AI_REVIEW_TOOL_SHA", workflow)
+        self.assertIn("vars.AI_REVIEW_TOOL_REPOSITORY || 'https://github.com/ayflying/ai-code-review.git'", workflow)
+        self.assertIn('clone_tool "$default_repository" "$tool_dir/fallback"', workflow)
+        self.assertIn("export AI_REVIEW_CLONE_TOKEN=''", workflow)
+        self.assertIn('http.followRedirects=false', workflow)
+        self.assertNotIn('secrets.AI_REVIEW_TOOL_READ_TOKEN || gitea.token', workflow)
         self.assertIn('echo "审查器版本：$(git -C "$tool_dir" rev-parse HEAD)"', workflow)
         self.assertIn("vars.AI_REVIEW_OPTIONS_JSON", workflow)
         for name, default in (("MAX_BATCHES", "20"), ("MAX_FILES", "300"),

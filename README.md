@@ -4,6 +4,14 @@
 
 给 Gitea 仓库接入 AI 代码审查：推送后按项目文档和 Skill 规范检查代码及文件变更，输出中文报告。有问题、建议或待确认事项都会发钉钉。默认不阻断 CI，可按仓库开启。
 
+## 审查器仓库来源
+
+新模板默认从 `https://github.com/ayflying/ai-code-review.git` 拉取工具。可在 Actions Variables 设置 `AI_REVIEW_TOOL_REPOSITORY` 为其他不含凭据的HTTPS仓库地址，例如自建Gitea镜像；拉取失败时自动尝试默认GitHub，保持同一个 `AI_REVIEW_TOOL_REF`，不静默换版本。两边都失败时明确记录工具未加载。非法地址直接拒绝，不尝试发送凭据。
+
+公开仓库匿名读取；私有镜像可配置 `AI_REVIEW_TOOL_READ_TOKEN` Secret。仅配置仓库与当前Gitea同源时允许使用任务令牌，回退GitHub不携带镜像专用令牌，也不跟随HTTP重定向。此来源选择发生在工具拉取之前，旧工作流需一次性更新拉取步骤和变量接线，不能靠工具自动更新获得。
+
+注意：GitHub仓库已创建，但本机此前推送因GitHub认证失败，尚未核验GitHub已有工具代码；默认源投入使用前需完成GitHub同步。现有Gitea接入不自动替换。
+
 ## 1. 添加工作流
 
 把本仓库的 [examples/ai-code-review.yml](examples/ai-code-review.yml) 文件复制到需要审查的项目中，保存为：
