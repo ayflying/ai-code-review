@@ -80,18 +80,16 @@ def review_batches(batches: list[tuple[str, list[str]]], after: str, shared_cont
     risk = bool(findings)
     notify = should_notify_result(findings, suggestions, verification)
     notes.append(f"钉钉通知门槛：{level}；{'达到门槛' if notify else '未达到门槛，不发送通知'}；不影响风险阻断。")
-    # 每批已经严格校验；分组渲染避免汇总超过单批40条契约而丢掉有效结论。
+    # 模型单批仍限40条；仅本地已校验的聚合结果放宽数量，统一渲染一组章节。
     parts = [f"已完成 {completed}/{len(batches)} 批。未完成批次不代表安全。"]
     if not completed:
         parts.append("审查未完成，没有有效模型结论，不能据此判断安全。")
         return "\n\n".join(parts), notes, False, False
     summary = "\n".join(summaries)
     count = max(len(findings), len(suggestions), len(verification), 1)
-    for offset in range(0, count, 40):
-        data = {"summary": summary if offset == 0 else "审查结果续表。",
-                "findings": findings[offset:offset + 40],
-                "suggestions": suggestions[offset:offset + 40],
-                "verification": verification[offset:offset + 40]}
-        body, _, _ = parse_result(json.dumps(data, ensure_ascii=False), documents, "\n\n".join(contexts))
-        parts.append(body)
+    data = {"summary": summary, "findings": findings,
+            "suggestions": suggestions, "verification": verification}
+    body, _, _ = parse_result(json.dumps(data, ensure_ascii=False), documents,
+                              "\n\n".join(contexts), max_items=count)
+    parts.append(body)
     return "\n\n".join(parts), notes, risk, notify

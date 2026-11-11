@@ -18,7 +18,7 @@ rule（该行开始的原文引用）。规则须适用于该变更，且有明�
 
 
 def parse_result(text: str, documents: dict[str, int] | None = None,
-                 context: str = "") -> tuple[str, bool, bool]:
+                 context: str = "", *, max_items: int = 40) -> tuple[str, bool, bool]:
     """校验规范引用确实来自已加载文档；不把建议或待确认项算成风险。"""
     data = json.loads(text)
     if not isinstance(data, dict) or not isinstance(data.get("summary"), str) or not data["summary"].strip():
@@ -29,11 +29,11 @@ def parse_result(text: str, documents: dict[str, int] | None = None,
     if not isinstance(findings, list):
         raise ValueError("无效问题数组")
     for items in (verification, suggestions):
-        if not isinstance(items, list) or len(items) > 40 or not all(
+        if not isinstance(items, list) or len(items) > max_items or not all(
             isinstance(item, str) and item.strip() for item in items
         ):
             raise ValueError("无效建议或待确认事项")
-    if len(findings) > 40:
+    if len(findings) > max_items:
         raise ValueError("问题过多")
     lines = ["## 总体结论", data["summary"], "", "## 明确问题"]
     for finding in findings:

@@ -19,23 +19,26 @@ def result(findings):
 
 
 class NotifyTests(unittest.TestCase):
-    def test_all_high_findings_before_medium_and_paginated_with_keyword(self):
+    def test_top_three_high_findings_in_one_message_with_keyword(self):
         from notification_summary import summarize
         report = "## 明确问题\n### medium | 代码风险\n影响：中风险\n" + "\n".join(
             f"### high | 代码风险\n影响：严重{i:03d} " + "中" * 100 for i in range(80))
         summary = summarize(report)
-        self.assertLess(summary.index("严重000"), summary.index("中风险"))
+        self.assertNotIn("中风险", summary)
+        self.assertIn("其余 78 项", summary)
         self.assertIn("90分", summary)
         with patch.dict(os.environ, {"AI_REVIEW_DINGTALK_WEBHOOK": WEBHOOK, "AI_REVIEW_DINGTALK_KEYWORD": "gitea"}), \
                 patch.object(notify, "request_json", return_value={"errcode": 0}) as request:
             self.assertIn("已接受", notify.notify_risk(report, True))
-        self.assertGreater(request.call_count, 1)
+        self.assertEqual(request.call_count, 1)
         messages = [call.args[2]["markdown"]["text"] for call in request.call_args_list]
         for message in messages:
             self.assertIn("gitea", message)
             self.assertLessEqual(len(message.encode("utf-8")), 16000)
-        for index in range(80):
+        for index in range(3):
             self.assertEqual("\n".join(messages).count(f"严重{index:03d}"), 1)
+
+        self.assertNotIn("严重003", messages[0])
 
     def test_no_risk_never_sends(self):
         with patch.dict(os.environ, {"AI_REVIEW_DINGTALK_WEBHOOK": WEBHOOK}), \

@@ -31,9 +31,9 @@ def summarize(report: str) -> str:
             counts[section] += 1
     result = [" / ".join(f"{name} {number} 项" for name, number in counts.items())]
     points.sort(key=lambda item: item[0], reverse=True)
-    severe = [text for score, text in points if score == 90]
-    other = [text for score, text in points if score != 90]
-    result.extend(severe + other[:2])
+    result.extend(text for _, text in points[:3])
+    if len(points) > 3:
+        result.append(f"仅展示优先级最高的 3 项，其余 {len(points) - 3} 项见详细报告。")
     if points:
         result.append("严重度评分：high 90 / medium 60 / low 30；同级保留报告顺序，不是漏洞验证或CVSS评分。")
     if not points:

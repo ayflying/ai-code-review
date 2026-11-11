@@ -14,6 +14,17 @@ def data(findings=None, suggestions=None, verification=None):
 
 
 class BatchReviewTests(unittest.TestCase):
+    def test_more_than_forty_findings_have_one_section_and_no_loss(self):
+        first = [{**FINDING, "impact": f"问题{i}", "severity": "medium"} for i in range(40)]
+        last = [{**FINDING, "impact": f"问题{i}"} for i in range(40, 47)]
+        with patch.object(batch_review, "collect_context", return_value=("", [], {})), \
+                patch.object(batch_review, "review_data", side_effect=[(data(first), [], "OPENAI"), (data(last), [], "OPENAI")]):
+            text, _, _, _ = batch_review.review_batches([("a", []), ("b", [])], "a" * 40)
+        for heading in ("## 总体结论", "## 明确问题", "## 改进建议", "## 待确认事项"):
+            self.assertEqual(text.count(heading), 1)
+        self.assertEqual(text.count("### "), 47)
+        self.assertLess(text.index("影响：问题40"), text.index("影响：问题0\n"))
+
     def test_shared_plan_reused_without_replacing_numbered_rules(self):
         with patch.object(batch_review, "collect_context", return_value=("--- DOCUMENT: AGENTS.md (1 lines) ---\n1: 原文", [], {"AGENTS.md": 1})), \
                 patch.object(batch_review, "review_data", return_value=(data(), [], "OPENAI")) as review:
