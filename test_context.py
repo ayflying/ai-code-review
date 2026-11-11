@@ -159,15 +159,19 @@ class ContextTests(unittest.TestCase):
                     collect_context(after, [])
                 command.assert_not_called()
 
-    def test_tree_output_limit_is_advisory_and_does_not_read_blobs(self):
-        self.put("README.md", "rules")
+    def test_large_business_tree_does_not_prevent_root_and_module_rules(self):
+        self.put("README.md", "root rules")
+        self.put("app/AGENTS.md", "module rules")
+        self.put("app/main.py", "source")
+        for index in range(40):
+            self.put(f"Assets/unrelated-{index:03}.txt", "business asset")
         after = self.commit()
-        with patch.object(review_context, "MAX_TREE_BYTES", 1), \
-                patch.object(review_context, "git", wraps=git) as calls:
-            text, notes, counts = collect_context(after, [])
-        self.assertEqual((text, counts), ("", {}))
-        self.assertTrue(any("覆盖不完整" in note and "超过 1 字节读取上限" in note for note in notes))
-        self.assertFalse(any(call.args[0] == "cat-file" for call in calls.call_args_list))
+        with patch.object(review_context, "MAX_TREE_BYTES", 500):
+            text, notes, counts = collect_context(after, ["app/main.py"])
+        self.assertIn("README.md", counts)
+        self.assertIn("app/AGENTS.md", counts)
+        self.assertIn("module rules", text)
+        self.assertFalse(any("未加载任何规范文档" in note for note in notes))
 
     def test_control_paths_and_gitlinks_never_loaded(self):
         self.put("README.md", "rules")

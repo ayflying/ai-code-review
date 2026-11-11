@@ -9,7 +9,8 @@ import subprocess
 import unicodedata
 from pathlib import PurePosixPath
 
-from changes import GitOutputLimitError, GitReadError, git, sensitive
+from changes import git, sensitive
+from context_tree import discover, failure_reason
 
 MAX_FILES = 20
 MAX_FILE_BYTES = 12_000
@@ -72,41 +73,13 @@ def collect_context(after: str, paths: list[str], max_bytes: int = MAX_TOTAL_BYT
     notes: list[str] = []
     try:
         git("rev-parse", "--verify", after + "^{commit}")
-        raw = git("ls-tree", "-r", "-z", "--full-tree", after, limit=MAX_TREE_BYTES)
-    except GitOutputLimitError:
-        reason = f"仓库文件清单超过 {MAX_TREE_BYTES:,} 字节读取上限"
-    except subprocess.TimeoutExpired:
-        reason = "Git 读取超时"
-    except GitReadError:
-        reason = "Git 命令执行失败（提交对象校验或文件清单读取失败）"
-    except OSError:
-        reason = "无法启动 Git 或访问本机读取资源"
-    except ValueError:
-        reason = "Git 返回的数据无效"
-    else:
-        reason = ""
-    if reason:
-        # 不回显原始错误、对象名或命令stderr。
+    except (ValueError, OSError, subprocess.TimeoutExpired) as error:
+        reason = failure_reason(error, MAX_TREE_BYTES)
         return "", [f"覆盖不完整：{reason}；未加载项目规范文档，代码差异审查继续。"], {}
-    tree: dict[str, tuple[str, str, str]] = {}
-    for entry in raw.split(b"\0"):
-        if not entry:
-            continue
-        try:
-            metadata, name = entry.split(b"\t", 1)
-            mode, kind, sha = metadata.decode("ascii").split()
-            path = name.decode("utf-8", errors="strict")
-        except (ValueError, UnicodeError):
-            notes.append("覆盖不完整：跳过无法解析或非 UTF-8 的 Git 清单路径。")
-            continue
-        if not _safe_path(path):
-            # Never echo sensitive names or control characters into the prompt.
-            notes.append("覆盖不完整：跳过敏感或含控制字符的规范候选路径。")
-            continue
-        if not re.fullmatch(r"[0-9a-fA-F]{40,64}", sha):
-            notes.append("覆盖不完整：跳过对象标识无效的 Git 清单项。")
-            continue
-        tree[path] = (mode, kind, sha)
+    # Root/ancestor rules are queried literally in small groups, never by a full
+    # repository walk. Only the documented global roots permit recursion.
+    tree = discover(after, _candidates(paths, {}), (*SKILL_ROOTS, "docs/"),
+                    MAX_TREE_BYTES, _safe_path, notes)
 
     documents: list[str] = []
     line_counts: dict[str, int] = {}
@@ -142,8 +115,9 @@ def collect_context(after: str, paths: list[str], max_bytes: int = MAX_TOTAL_BYT
         except UnicodeError:
             notes.append(f"覆盖不完整：规范文档 {path} 不是严格 UTF-8，已跳过。")
             continue
-        except (ValueError, OSError, subprocess.TimeoutExpired):
-            notes.append(f"覆盖不完整：规范文档 {path} Git 对象读取失败，已跳过。")
+        except (ValueError, OSError, subprocess.TimeoutExpired) as error:
+            notes.append(f"覆盖不完整：规范文档 {path} Git 对象读取失败："
+                         f"{failure_reason(error, MAX_FILE_BYTES)}，已跳过。")
             continue
         # 文档可能包含部署凭据；宁可跳过整份，也不把已识别的秘密发到模型。
         if re.search(r"(?im)(?:password|passwd|api[_ -]?key|access[_ -]?token|密码)"
