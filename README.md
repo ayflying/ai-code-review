@@ -56,7 +56,7 @@
 | --- | --- | --- |
 | `AI_REVIEW_BLOCK_ON_RISK` | `false` | `true` 时明确代码风险/规范问题让 CI 失败；建议和待确认不阻断 |
 | `AI_REVIEW_NOTIFY_LEVEL` | `all` | 通知门槛：all 包含问题/建议/待确认；low、medium、high 仅明确问题达到对应级别才通知；不影响阻断 |
-| `AI_REVIEW_DINGTALK_KEYWORD` | `gitea` | 与机器人的安全关键词一致 |
+| `AI_REVIEW_DINGTALK_KEYWORD` | `git` | 与机器人的安全关键词一致 |
 | `AI_REVIEW_TOOL_REF` | `main` | 自动使用工具最新代码；需要回退/锁定时改为不可变发布标签 |
 | `AI_REVIEW_MAX_BATCHES` | `20` | 最大审查批数，允许1–200 |
 | `AI_REVIEW_MAX_FILES` | `300` | 最大考虑文件数，允许1–5000 |

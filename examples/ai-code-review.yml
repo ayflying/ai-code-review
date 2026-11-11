@@ -6,7 +6,7 @@ env:
   AI_REVIEW_BLOCK_ON_RISK: ${{ vars.AI_REVIEW_BLOCK_ON_RISK || 'false' }}  # true：明确问题阻断；建议/待确认不阻断
   AI_REVIEW_DINGTALK_WEBHOOK: ${{ secrets.AI_REVIEW_DINGTALK_WEBHOOK }}  # 默认机器人；不填其他地址，禁止明文；Secret 缺失则不通知
   AI_REVIEW_NOTIFY_LEVEL: ${{ vars.AI_REVIEW_NOTIFY_LEVEL || 'all' }}  # all：问题/建议/待确认均通知；low/medium/high：明确问题达到该级别才通知，不影响阻断
-  AI_REVIEW_DINGTALK_KEYWORD: ${{ vars.AI_REVIEW_DINGTALK_KEYWORD || 'gitea' }}  # 机器人安全关键词
+  AI_REVIEW_DINGTALK_KEYWORD: ${{ vars.AI_REVIEW_DINGTALK_KEYWORD || 'git' }}  # 机器人安全关键词
   AI_REVIEW_TOOL_REPOSITORY: ${{ vars.AI_REVIEW_TOOL_REPOSITORY || 'https://github.com/ayflying/ai-code-review.git' }}  # 审查器仓库HTTPS地址，可改为自建镜像；不得内嵌凭据
   AI_REVIEW_TOOL_REF: ${{ vars.AI_REVIEW_TOOL_REF || 'main' }}  # 默认自动更新；可在后台改为不可变标签回退/锁定
   AI_REVIEW_MAX_BATCHES: ${{ vars.AI_REVIEW_MAX_BATCHES || '20' }}  # 最多审查批数，允许1–200；调大会增加调用费用和时间

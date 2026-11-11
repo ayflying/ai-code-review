@@ -23,7 +23,7 @@ def notify_risk(report: str, should_notify: bool) -> str:
         repository = os.getenv("AI_REVIEW_REPOSITORY", "未知仓库")
         sha = os.getenv("AI_REVIEW_AFTER", "未知提交")
         run_url = os.getenv("AI_REVIEW_RUN_URL", "")
-        keyword = os.getenv("AI_REVIEW_DINGTALK_KEYWORD", "gitea").strip()
+        keyword = os.getenv("AI_REVIEW_DINGTALK_KEYWORD", "git").strip()
         if not keyword or len(keyword.encode("utf-8")) > 200 or any(ord(c) < 32 for c in keyword):
             return "钉钉关键词无效，未发送通知。"
         repository_label = short_text(repository, 100)

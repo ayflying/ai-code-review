@@ -61,7 +61,7 @@ class NotifyTests(unittest.TestCase):
             self.assertIn("已接受", notify.notify_risk("风险" * 12000, True))
             payload = request.call_args.args[2]
             text = payload["markdown"]["text"]
-            self.assertIn("gitea", text)
+            self.assertIn("**git 代码审查报告**", text)
             self.assertTrue(text.startswith("# owner/repo\n"))
             self.assertTrue(payload["markdown"]["title"].startswith("owner/repo ·"))
             self.assertIn("本次提交：修复素材列表筛选", text)
