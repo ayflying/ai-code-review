@@ -8,6 +8,17 @@ from settings import limit_value, load_settings, policy
 
 
 class SettingsTests(unittest.TestCase):
+    def test_concurrency_default_and_json_override(self):
+        with patch.dict(os.environ, {}, clear=True):
+            self.assertEqual(limit_value("AI_REVIEW_CONCURRENCY"), 3)
+            os.environ["AI_REVIEW_OPTIONS_JSON"] = '{"concurrency":1}'
+            load_settings()
+            self.assertEqual(limit_value("AI_REVIEW_CONCURRENCY"), 1)
+            for value in ("0", "11", "true"):
+                os.environ["AI_REVIEW_CONCURRENCY"] = value
+                with self.assertRaises(ValueError):
+                    limit_value("AI_REVIEW_CONCURRENCY")
+
     def test_policy_matrix(self):
         for block in ("true", "false", ""):
             for risk in ("true", "false", ""):

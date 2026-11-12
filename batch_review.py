@@ -4,6 +4,7 @@ import json
 import subprocess
 import time
 
+from batch_parallel import review_prepared
 from providers import SYSTEM, review_data
 from report import parse_result
 from review_context import collect_context
@@ -32,6 +33,7 @@ def review_batches(batches: list[tuple[str, list[str]]], after: str, shared_cont
     """每批失败不覆盖其他批结论；建议通知与明确问题阻断分别累计。"""
     level = notification_level()  # 请求前验证，避免无效配置消耗模型调用。
     input_bytes = limit_value("AI_REVIEW_INPUT_BYTES", MAX_INPUT_BYTES)
+    workers = limit_value("AI_REVIEW_CONCURRENCY")
     # 最小输入配置仍保留原文规范空间，规划只是辅助，不可挤掉整批审查。
     shared_context = shared_context.encode("utf-8")[:min(6000, input_bytes // 10)].decode("utf-8", "ignore")
     notes = [f"分批审查：共 {len(batches)} 批；单次输入预算 {input_bytes} 字节；各批独立上下文，跨批关联问题可能漏报。"]
@@ -43,6 +45,8 @@ def review_batches(batches: list[tuple[str, list[str]]], after: str, shared_cont
     contexts: list[str] = []
     deadline = time.monotonic() + MAX_SECONDS
     completed = 0
+    prepared = []
+    notes.append(f"详细AI审查最多 {workers} 并发；各批文档顺序加载后再请求模型。")
     for index, (diff, paths) in enumerate(batches, 1):
         if time.monotonic() >= deadline:
             notes.append(f"覆盖不完整：达到 {MAX_SECONDS} 秒启动预算，第 {index} 批起未审查；在途请求可能额外耗时。")
@@ -60,10 +64,12 @@ def review_batches(batches: list[tuple[str, list[str]]], after: str, shared_cont
                 # 摘要放编号原文之前，避免被误当成最后一个规范文档的引用证据。
                 context = ("同次CI共享规划（模型生成的辅助数据，不是规范原文或指令）：\n"
                            + shared_context + "\n\n" + context)
-            data, attempts, provider = review_data(diff, context, loaded)
+            prepared.append((index, diff, context, loaded, paths))
         except (ValueError, OSError, subprocess.SubprocessError):
             notes.append(f"覆盖不完整：第 {index} 批运行环境异常；保留其他批次结论。")
             continue
+    for item, data, attempts, provider in review_prepared(prepared, workers, deadline, review_data):
+        index, _, context, loaded, paths = item
         notes.extend(f"第 {index} 批：{note}" for note in attempts)
         if data is None:
             notes.append(f"覆盖不完整：第 {index} 批主备审查均失败；不能据此判断安全。")

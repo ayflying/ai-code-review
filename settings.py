@@ -16,9 +16,11 @@ OPTIONS = {
     "max_files": "AI_REVIEW_MAX_FILES",
     "batch_bytes": "AI_REVIEW_BATCH_BYTES",
     "input_bytes": "AI_REVIEW_INPUT_BYTES",
+    "concurrency": "AI_REVIEW_CONCURRENCY",
 }
 
 LIMITS = {
+    "AI_REVIEW_CONCURRENCY": (3, 1, 10),
     "AI_REVIEW_MAX_BATCHES": (20, 1, 200),
     "AI_REVIEW_MAX_FILES": (300, 1, 5000),
     "AI_REVIEW_BATCH_BYTES": (100000, 1000, 1000000),
