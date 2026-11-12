@@ -28,7 +28,7 @@ class PolicyTests(unittest.TestCase):
                                                                      f"should_notify={str(should_notify).lower()}"])
 
     def test_workflow_applies_policy_after_report(self):
-        workflow = (Path(__file__).parent / "examples/ai-code-review.yml").read_text(encoding="utf-8")
+        workflow = (Path(__file__).resolve().parents[1] / "examples/ai-code-review.yml").read_text(encoding="utf-8")
         self.assertIn("vars.AI_REVIEW_BLOCK_ON_RISK || 'false'", workflow)
         self.assertIn('"$AI_REVIEW_TOOL_DIR/run.py" --policy', workflow)
         self.assertIn("vars.AI_REVIEW_TOOL_REF || 'main'", workflow)

@@ -5,7 +5,7 @@ from unittest.mock import patch
 
 import planning_retry as retry
 import review_plan as plan
-from test_review_plan import file, result
+from tests.test_review_plan import file, result
 
 
 class RetryTests(unittest.TestCase):

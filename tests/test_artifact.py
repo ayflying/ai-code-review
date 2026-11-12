@@ -49,7 +49,7 @@ class ArtifactTests(unittest.TestCase):
             self.assertEqual(preview_url(), "https://git.example/owner/repo/actions/artifacts/126/preview/report.html")
 
     def test_notification_waits_for_uploaded_artifact(self):
-        workflow = (Path(__file__).parent / "examples/ai-code-review.yml").read_text(encoding="utf-8")
+        workflow = (Path(__file__).resolve().parents[1] / "examples/ai-code-review.yml").read_text(encoding="utf-8")
         self.assertIn("AI_REVIEW_DEFER_NOTIFY: 'true'", workflow)
         self.assertIn("steps.artifact.outcome == 'success'", workflow)
         self.assertIn("/artifacts/ai-code-review-report-${{ gitea.run_attempt }}", workflow)

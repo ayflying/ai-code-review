@@ -8,7 +8,7 @@ from unittest.mock import patch
 import providers
 from report import parse_result
 from review_context import source_line
-from test_notify import FINDING
+from tests.test_notify import FINDING
 
 CONTEXT = "--- DOCUMENT: AGENTS.md (2 lines) ---\n1: 必须检查租户权限\n2: 禁止记录密码"
 DOCUMENTS = {"AGENTS.md": 2}

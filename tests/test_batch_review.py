@@ -5,7 +5,7 @@ import unittest
 from unittest.mock import patch
 
 import batch_review
-from test_notify import FINDING
+from tests.test_notify import FINDING
 
 
 def data(findings=None, suggestions=None, verification=None):

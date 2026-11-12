@@ -6,7 +6,7 @@ import unittest
 from notification_summary import summarize
 from report import parse_result
 from risk_score import score_of
-from test_notify import FINDING
+from tests.test_notify import FINDING
 
 
 class ScoreTests(unittest.TestCase):

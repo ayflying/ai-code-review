@@ -4,6 +4,18 @@
 
 给 Gitea 仓库接入 AI 代码审查：推送后按项目文档和 Skill 规范检查代码及文件变更，输出中文报告。有问题、建议或待确认事项都会发钉钉。默认不阻断 CI，可按仓库开启。
 
+## 开发测试
+
+测试脚本统一放在 `tests/`，从仓库根目录运行：
+
+```sh
+python -m unittest discover -s tests -t . -p "test_*.py" -v
+python -m unittest tests.test_notify -v
+python -m ruff check .
+```
+
+默认的 `python -m unittest discover` 也会发现该测试包；无需安装业务依赖或修改运行入口。
+
 ## 可选规范与覆盖提示
 
 逐级查找的 `AGENTS.md`、`README.md` 是可选文件，不存在时正常跳过，不逐条报告“缺失”或“覆盖不完整”。继续使用已加载的上级/根目录规范。全部未加载时统一说明仅依据代码差异审查、未验证项目规范；真实扫描失败、读取失败或预算截断仍单独报告原因，不要求每个目录补建规范文件。
