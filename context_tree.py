@@ -213,8 +213,9 @@ class TreeReader:
 
 
 def discover(after: str, exact_paths: list[str], roots: tuple[str, ...], limit: int,
-             safe_path: Callable[[str], bool], notes: list[str]) -> dict[str, tuple[str, str, str]]:
-    reader = TreeReader(limit, safe_path, notes)
+             safe_path: Callable[[str], bool], notes: list[str], *,
+             reader: TreeReader | None = None) -> dict[str, tuple[str, str, str]]:
+    reader = reader or TreeReader(limit, safe_path, notes)
     try:
         reader.exact(after, list(dict.fromkeys([*exact_paths, *(root.rstrip("/") for root in roots)])))
         for root in roots:

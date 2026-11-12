@@ -71,7 +71,7 @@ class ContextTests(unittest.TestCase):
         self.assertNotIn("unrelated readme", text)
         self.assertNotIn("never run", text)
         self.assertEqual(counts["README.md"], 2)
-        self.assertEqual(list(counts)[:5], ["README.md", "AGENTS.md", "CONTRIBUTING.md",
+        self.assertEqual(list(counts)[:5], ["AGENTS.md", "README.md", "CONTRIBUTING.md",
                                           "app/AGENTS.md", "app/README.md"])
         self.assertEqual(list(counts)[-1], "docs/design.md")
         self.assertTrue(all(path in counts for path in fixtures if path.endswith("/SKILL.md")))
@@ -85,7 +85,7 @@ class ContextTests(unittest.TestCase):
         self.put("README.md", "valid\n")
         self.put("AGENTS.md", b"\xffinvalid")
         self.put("CONTRIBUTING.md", b"binary\x00content")
-        self.put("docs/large.md", "X" * 12_001)
+        self.put("docs/large.md", "X" * (review_context.MAX_FILE_BYTES + 1))
         self.put("docs/credentials/README.md", "secret sentinel")
         self.put("docs/secrets/AGENTS.md", "secret rules")
         after = self.commit()
@@ -142,6 +142,99 @@ class ContextTests(unittest.TestCase):
         self.assertLessEqual(len(text.encode("utf-8")), 800)
         self.assertNotIn("README.md", counts)
         self.assertTrue(any("行号" in note for note in notes))
+
+    def test_project_entry_package_rules_and_matched_skill_precede_external_skills(self):
+        package = "Packages/project-rules"
+        self.put("AGENTS.md", f"总规则：`{package}/AGENTS.md`；索引：`{package}/skills/index.md`。")
+        rules = "总体规则\n" + "x" * 15000 + "\nUI binding must be serialized."
+        self.put(f"{package}/AGENTS.md", rules + "\n索引 `skills/index.md`。")
+        self.put(f"{package}/skills/index.md", """# Skill index
+- `general-coding`
+  - 场景：C# naming and exceptions.
+- `view-binding`
+  - 场景：ViewModel UIForm lifecycle.
+- `server-api`
+  - 场景：HTTP request response.
+""")
+        self.put(f"{package}/skills/general-coding/SKILL.md", "Use clear names.")
+        self.put(f"{package}/skills/view-binding/SKILL.md", "细则 [binding](references/binding.md#rule)；工具 `scripts/run.py`。")
+        self.put(f"{package}/skills/view-binding/references/binding.md", "Avoid runtime hierarchy lookup.")
+        self.put(f"{package}/skills/view-binding/scripts/run.py", "raise SystemExit('MUST NOT RUN')")
+        self.put(f"{package}/skills/server-api/SKILL.md", "unrelated server sentinel")
+        for index in range(25):
+            self.put(f".agents/skills/external-{index:02d}/SKILL.md", "external skill")
+        after = self.commit()
+        self.put(f"{package}/AGENTS.md", "uncommitted replacement")
+        text, notes, counts = collect_context(after, ["src/Views/MailViewModel.cs"])
+        important = ["AGENTS.md", f"{package}/AGENTS.md", f"{package}/skills/index.md",
+                     f"{package}/skills/general-coding/SKILL.md", f"{package}/skills/view-binding/SKILL.md",
+                     f"{package}/skills/view-binding/references/binding.md"]
+        self.assertTrue(all(path in counts for path in important))
+        self.assertLess(list(counts).index(important[-1]), next(
+            index for index, path in enumerate(counts) if path.startswith(".agents/")))
+        self.assertNotIn("uncommitted replacement", text)
+        self.assertNotIn("unrelated server sentinel", text)
+        self.assertNotIn("MUST NOT RUN", text)
+        self.assertEqual(review_context.source_line(text, f"{package}/AGENTS.md", 3),
+                         "UI binding must be serialized.")
+        self.assertTrue(any("2 个 Skill 路由" in note and "1 个未匹配" in note for note in notes))
+
+    def test_relative_links_root_fallback_cycles_and_explicit_missing(self):
+        self.put("AGENTS.md", "规则 [entry](Packages/rules/AGENTS.md)。")
+        self.put("Packages/rules/AGENTS.md", "`../../AGENTS.md`\n`../common.md`\n`guides/safety.md`\n`missing.md`")
+        self.put("Packages/common.md", "relative rule")
+        self.put("guides/safety.md", "root rule")
+        after = self.commit()
+        text, notes, counts = collect_context(after, ["src/main.py"])
+        self.assertEqual(set(counts), {"AGENTS.md", "Packages/rules/AGENTS.md", "Packages/common.md", "guides/safety.md"})
+        self.assertEqual(text.count("--- DOCUMENT: AGENTS.md ("), 1)
+        self.assertTrue(any("Packages/rules/missing.md 未找到" in note for note in notes))
+        self.assertFalse(any("src/AGENTS.md" in note for note in notes))
+
+    def test_explicit_entry_precedes_large_readme_and_upgrades_ancestor_priority(self):
+        self.put("AGENTS.md", "`pkg/AGENTS.md`")
+        self.put("README.md", "supplement" * 3000)
+        self.put("pkg/AGENTS.md", "`rules.md`\nprimary project rule")
+        self.put("pkg/rules.md", "mandatory rule" * 700)
+        after = self.commit()
+        text, notes, counts = collect_context(after, ["pkg/src/main.py"], max_bytes=12000)
+        self.assertEqual(list(counts)[:3], ["AGENTS.md", "pkg/AGENTS.md", "pkg/rules.md"])
+        self.assertIn("mandatory rule", text)
+        self.assertNotIn("README.md", counts)
+        self.assertTrue(any("README.md" in note and "跳过" in note for note in notes))
+
+    def test_references_keep_security_filters_and_never_read_code_or_external_paths(self):
+        self.put("AGENTS.md", "\n".join(f"`{path}`" for path in (
+            "../../outside.md", "https://example.invalid/rules.md", "C:/private.md",
+            "secrets/rules.md", "run.py", "rules/link.md", "rules/credentials.md", "rules/invalid.md")))
+        self.put("secrets/rules.md", "SECRET SENTINEL")
+        self.put("run.py", "raise SystemExit('MUST NOT RUN')")
+        self.put("rules/credentials.md", "api_key=PRIVATE SENTINEL")
+        self.put("rules/invalid.md", b"\xffinvalid")
+        self.commit()
+        sha = self.command("hash-object", "-w", "--stdin", data=b"../../outside.md").decode().strip()
+        self.command("update-index", "--add", "--cacheinfo", f"120000,{sha},rules/link.md")
+        self.command("commit", "-qm", "link")
+        after = self.command("rev-parse", "HEAD").decode().strip()
+        text, notes, counts = collect_context(after, [])
+        self.assertEqual(set(counts), {"AGENTS.md"})
+        self.assertNotIn("PRIVATE SENTINEL", text)
+        self.assertNotIn("SECRET SENTINEL", text)
+        self.assertTrue(any("非普通 blob" in note for note in notes))
+        self.assertTrue(any("疑似包含明文凭据" in note for note in notes))
+        self.assertTrue(any("UTF-8" in note for note in notes))
+
+    def test_reference_count_and_numbered_budget_are_bounded(self):
+        self.put("AGENTS.md", "\n".join(f"`rules/{index}.md`" for index in range(8)))
+        for index in range(8):
+            self.put(f"rules/{index}.md", "rule" * 200)
+        after = self.commit()
+        with patch.object(review_context, "MAX_REFERENCES", 4):
+            text, notes, counts = collect_context(after, [], max_bytes=2000)
+        self.assertLessEqual(len(text.encode("utf-8")), 2000)
+        self.assertTrue(any("规范引用达到 4 条上限" in note for note in notes))
+        self.assertFalse(any(f"rules/{index}.md" in counts for index in range(4, 8)))
+        self.assertTrue(any("整文件跳过" in note for note in notes))
 
     def test_plaintext_credentials_never_enter_context(self):
         self.put("AGENTS.md", "**密码**：fake-sensitive-value\npassword=another-fake")

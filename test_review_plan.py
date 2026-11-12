@@ -193,12 +193,30 @@ class PlanningTests(unittest.TestCase):
         before = dict(os.environ)
         with self.request(return_value=result(files)) as request:
             plan.select_files("a" * 40, files, loader, input_bytes=10000)
-        loader.assert_called_once_with("a" * 40, ["src/app.py"], max_bytes=plan.MAX_CONTEXT_BYTES)
+        loader.assert_called_once_with("a" * 40, ["src/app.py"], max_bytes=plan._context_budget(10000))
         payload = json.loads(request.call_args.args[1][len(plan.INSTRUCTIONS):])
         self.assertLessEqual(len(payload["files"][0]["sample"].encode("utf-8")), 2000)
         self.assertEqual(payload["project_documents"], "项目文档")
         self.assertEqual(dict(os.environ), before)
         self.assertEqual(len(files[0]["sample"]), 5000)
+
+    def test_full_numbered_project_rules_reach_planner_without_clipping(self):
+        files = [file()]
+        rules = "--- DOCUMENT: Packages/rules/AGENTS.md (2 lines) ---\n1: " + "规则" * 6000 + "\n2: FINAL RULE"
+        loader = Mock(return_value=(rules, [], {"Packages/rules/AGENTS.md": 2}))
+        with self.request(return_value=result(files)) as request:
+            plan.select_files("a" * 40, files, loader)
+        payload = json.loads(request.call_args.args[1][len(plan.INSTRUCTIONS):])
+        self.assertEqual(payload["project_documents"], rules)
+        self.assertGreater(loader.call_args.kwargs["max_bytes"], 32000)
+
+    def test_oversize_custom_context_is_not_silently_sliced(self):
+        files = [file()]
+        with self.request(return_value=result(files)) as request:
+            _, _, notes = plan.plan_files(files, "x" * 60000, 10000)
+        payload = json.loads(request.call_args.args[1][len(plan.INSTRUCTIONS):])
+        self.assertEqual(payload["project_documents"], "")
+        self.assertTrue(any("未截断规范原文" in note for note in notes))
 
     def test_loader_failure_is_advisory(self):
         files = [file()]

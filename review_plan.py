@@ -17,7 +17,7 @@ from review_context import collect_context
 MAX_GROUPS = 20
 MAX_SECONDS = 900  # 容纳首次请求+5次超时重试、退避以及Claude备用请求启动。
 MAX_SHARED_BYTES = 6000
-MAX_CONTEXT_BYTES = 12_000
+MAX_CONTEXT_BYTES = 60_000
 MAX_SAMPLE_BYTES = 2000
 MAX_GROUP_FILES = 100
 MAX_RESPONSE_BYTES = 300_000
@@ -52,6 +52,11 @@ def _clean(value: str, limit: int = 1000) -> str:
 def _prompt(files: list[dict], context: str) -> str:
     return INSTRUCTIONS + json.dumps({"project_documents": context, "files": files},
                                      ensure_ascii=False, separators=(",", ":"))
+
+
+def _context_budget(input_bytes: int) -> int:
+    budget = max(0, input_bytes - PROTOCOL_RESERVE - len(providers.PLANNING_SYSTEM.encode("utf-8")))
+    return min(MAX_CONTEXT_BYTES, budget // 2)
 
 
 def _object(pairs: list[tuple]) -> dict:
@@ -128,7 +133,7 @@ def plan_files(files: list[dict], context: str, input_bytes: int
 
     Each item contains path:str, bytes:int (original diff size), sample:str.
     Invalid/unplanned groups retain every path. At most 20 byte-bounded groups
-    start; no new provider request starts after 120s (in-flight calls may finish).
+    start; no new provider request starts after 900s (in-flight calls may finish).
     OPENAI is tried first; only failures/invalid JSON try CLAUDE. Shared context
     is never accumulated as request history and is not normative evidence.
     """
@@ -140,7 +145,9 @@ def plan_files(files: list[dict], context: str, input_bytes: int
     # Reserve ample room for protocol and a useful file payload. JSON escaping is
     # charged below, rather than estimating Python string length or source size.
     budget = max(0, input_bytes - PROTOCOL_RESERVE - len(providers.PLANNING_SYSTEM.encode("utf-8")))
-    context = _clip(context, min(MAX_CONTEXT_BYTES, max(0, budget // 4)))
+    if len(context.encode("utf-8")) > _context_budget(input_bytes):
+        context = ""
+        notes.append("覆盖不完整：规划规范超过输入预算，整段跳过，未截断规范原文。")
     groups: list[list[dict]] = []
     group: list[dict] = []
     for file in files:
@@ -243,7 +250,7 @@ def select_files(after: str, files: list[dict], context_loader: Callable | None 
     if not files:
         return set(), "", []
     try:
-        context, context_notes, _ = loader(after, paths, max_bytes=MAX_CONTEXT_BYTES)
+        context, context_notes, _ = loader(after, paths, max_bytes=_context_budget(input_bytes))
         if not isinstance(context, str):
             context = ""
     except (ValueError, TypeError, OSError):

@@ -4,19 +4,22 @@ Documents are evidence for review, not instructions to execute. No skill scripts
 symlinks, submodules, filters or other business-repository code are executed.
 """
 
+import heapq
 import re
 import subprocess
 import unicodedata
 from pathlib import PurePosixPath
 
 from changes import git, sensitive
-from context_tree import discover, failure_reason
+from context_tree import ScanBudgetError, TreeReader, discover, failure_reason
+from rule_references import references, skill_routes
 
 MAX_FILES = 20
-MAX_FILE_BYTES = 12_000
+MAX_FILE_BYTES = 32_000
 MAX_TOTAL_BYTES = 60_000
 MAX_TREE_BYTES = 1_000_000
-ROOT_DOCS = ("README.md", "AGENTS.md", "CONTRIBUTING.md")
+MAX_REFERENCES = 128
+ROOT_DOCS = ("AGENTS.md", "README.md", "CONTRIBUTING.md")
 SKILL_ROOTS = (".agents/skills/", ".claude/skills/", ".skills/", "skills/")
 
 
@@ -76,10 +79,32 @@ def collect_context(after: str, paths: list[str], max_bytes: int = MAX_TOTAL_BYT
     except (ValueError, OSError, subprocess.TimeoutExpired) as error:
         reason = failure_reason(error, MAX_TREE_BYTES)
         return "", [f"覆盖不完整：{reason}；未加载项目规范文档，代码差异审查继续。"], {}
-    # Root/ancestor rules are queried literally in small groups, never by a full
-    # repository walk. Only the documented global roots permit recursion.
-    tree = discover(after, _candidates(paths, {}), (*SKILL_ROOTS, "docs/"),
-                    MAX_TREE_BYTES, _safe_path, notes)
+    reader = TreeReader(MAX_TREE_BYTES, _safe_path, notes)
+    tree = reader.tree
+    queried: set[str] = set()
+
+    def query(candidates: list[str]) -> None:
+        missing = [path for path in dict.fromkeys(candidates)
+                   if path not in queried and _safe_path(path)]
+        queried.update(missing)
+        try:
+            reader.exact(after, missing)
+        except ScanBudgetError as error:
+            reader.note(f"覆盖不完整：规范清单扫描达到{error}，保留已获取文档。")
+
+    initial = _candidates(paths, {})
+    query(initial)
+    pending: list[tuple[int, int, str]] = []
+    scheduled: dict[str, int] = {}
+    visited: set[str] = set()
+
+    def schedule(path: str, priority: int) -> None:
+        if path in tree and path not in visited and priority < scheduled.get(path, 99):
+            heapq.heappush(pending, (priority, len(scheduled), path))
+            scheduled[path] = priority
+
+    for path in initial:
+        schedule(path, 0 if path == "AGENTS.md" else 2)
 
     documents: list[str] = []
     line_counts: dict[str, int] = {}
@@ -87,13 +112,24 @@ def collect_context(after: str, paths: list[str], max_bytes: int = MAX_TOTAL_BYT
     rendered_used = 0
     max_bytes = min(max_bytes, MAX_TOTAL_BYTES)
     attempted = 0
-    for path in _candidates(paths, tree):
-        entry = tree.get(path)
-        if entry is None:
-            # 逐级探测的是可选规范，不要求每个目录都创建AGENTS.md/README.md。
-            # 真正的Git扫描失败由discover记录；不能把不存在与读取失败混为一谈。
+    reference_count = 0
+    fallback_scanned = False
+    while pending or not fallback_scanned:
+        if not pending:
+            # Explicit project rules get both scan and content budgets before
+            # unrelated global skills. Reuse the same discovery safety limits.
+            discover(after, [], (*SKILL_ROOTS, "docs/"), MAX_TREE_BYTES,
+                     _safe_path, notes, reader=reader)
+            fallback_scanned = True
+            for path in _candidates(paths, tree):
+                schedule(path, 4)
+            if not pending:
+                break
+        priority, _, path = heapq.heappop(pending)
+        if path in visited or priority != scheduled[path]:
             continue
-        mode, kind, sha = entry
+        visited.add(path)
+        mode, kind, sha = tree[path]
         if mode not in {"100644", "100755"} or kind != "blob":
             notes.append(f"覆盖不完整：跳过非普通 blob 规范文档 {path}（不跟随链接/子模块）。")
             continue
@@ -137,6 +173,35 @@ def collect_context(after: str, paths: list[str], max_bytes: int = MAX_TOTAL_BYT
         rendered_used += size_with_numbers
         documents.append(document)
         notes.append(f"已加载规范文档：{path}（{len(lines)} 行）。")
+        linked = references(path, text)
+        routes, unmatched = skill_routes(path, text, paths, SKILL_ROOTS)
+        if routes or unmatched:
+            notes.append(f"规范索引 {path}：按变更路径关键词匹配 {len(routes)} 个 Skill 路由，"
+                         f"另有 {unmatched} 个未匹配路由未展开；路径匹配不保证覆盖所有适用细则。")
+        allowed = []
+        for candidates in [*linked, *routes]:
+            candidates = tuple(candidate for candidate in candidates if _safe_path(candidate))
+            if not candidates:
+                continue
+            if reference_count >= MAX_REFERENCES:
+                reader.note(f"覆盖不完整：规范引用达到 {MAX_REFERENCES} 条上限，剩余引用未展开。")
+                break
+            reference_count += 1
+            allowed.append(candidates)
+        query([candidate for candidates in allowed for candidate in candidates])
+        for candidates in allowed:
+            target = next((candidate for candidate in candidates if candidate in tree), None)
+            if target is None:
+                notes.append(f"覆盖不完整：规范文档 {path} 引用的 {candidates[0]} 未找到或未能读取。")
+                continue
+            if target.endswith("/SKILL.md"):
+                priority = 2
+            elif (PurePosixPath(path).name in {"AGENTS.md", "index.md"}
+                  or PurePosixPath(target).name in {"AGENTS.md", "index.md"}):
+                priority = 1
+            else:
+                priority = 3
+            schedule(target, priority)
     if not line_counts:
         notes.append("未加载任何项目规范文档：本次仅依据代码差异审查，未验证项目规范；不要求各目录新建规范文件。")
     return "\n\n".join(documents), list(dict.fromkeys(notes)), line_counts
